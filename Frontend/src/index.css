@@ -1,0 +1,108 @@
+:root {
+  /* HSL Color Palette - Midnight Blue & Starlight Gold */
+  --color-bg-deep: 220 30% 10%;       /* Very dark blue */
+  --color-bg-surface: 220 25% 15%;    /* Slightly lighter blue for cards */
+  --color-primary-gold: 45 90% 60%;   /* Bright gold for accents */
+  --color-primary-gold-dim: 45 50% 40%; /* Muted gold for borders/secondary */
+  
+  --color-text-main: 220 10% 95%;     /* Off-white */
+  --color-text-muted: 220 10% 70%;    /* Grey-ish blue */
+
+  --color-danger: 0 70% 60%;
+  --color-success: 140 60% 50%;
+
+  /* Glassmorphism Variables */
+  --glass-bg: hsla(220, 30%, 20%, 0.4);
+  --glass-border: hsla(220, 20%, 80%, 0.1);
+  --glass-blur: 16px;
+
+  /* Spacing */
+  --spacing-xs: 0.5rem;
+  --spacing-sm: 1rem;
+  --spacing-md: 2rem;
+  --spacing-lg: 4rem;
+  
+  /* Typography */
+  --font-family-sans: 'Inter', system-ui, Avenir, Helvetica, Arial, sans-serif;
+  --font-family-serif: 'Merriweather', serif; /* For diary entries */
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-family-sans);
+  background: radial-gradient(
+    circle at 50% 0%, 
+    hsl(220, 30%, 15%) 0%, 
+    hsl(var(--color-bg-deep)) 100%
+  );
+  color: hsl(var(--color-text-main));
+  min-height: 100vh;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Typography Utilities */
+h1, h2, h3 {
+  font-weight: 700;
+  line-height: 1.2;
+  color: hsl(var(--color-text-main));
+}
+
+h1 { font-size: 3rem; letter-spacing: -0.02em; }
+h2 { font-size: 2rem; }
+h3 { font-size: 1.5rem; color: hsl(var(--color-primary-gold)); }
+
+button {
+  cursor: pointer;
+  border: none;
+  font-family: inherit;
+}
+
+/* Components */
+.btn-primary {
+  background: linear-gradient(135deg, hsl(var(--color-primary-gold)), hsl(45, 80%, 50%));
+  color: hsl(var(--color-bg-deep));
+  padding: 0.8rem 2rem;
+  border-radius: 999px; /* Pill shape */
+  font-weight: 600;
+  font-size: 1rem;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: 0 4px 15px hsla(45, 90%, 60%, 0.3);
+}
+
+.btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px hsla(45, 90%, 60%, 0.5);
+}
+
+.glass-panel {
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
+  border-radius: 20px;
+  padding: var(--spacing-md);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: var(--spacing-md);
+}
+
+/* Animations */
+@keyframes float {
+  0% { transform: translateY(0px); }
+  50% { transform: translateY(-10px); }
+  100% { transform: translateY(0px); }
+}
+
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
