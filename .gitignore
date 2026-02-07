@@ -1,16 +1,35 @@
-# Binaries
-*.exe
-*.dll
-*.so
-*.dylib
-*.test
-*.out
+# General
+.DS_Store
+.idea/
+.vscode/
+*.log
+tmp/
 
-# Node/Frontend
+# App Data
+*.db
+*.sqlite
+diary.db
+
+# Node
 node_modules/
+npm-debug.log
+yarn-error.log
+
+# Frontend Build
 dist/
 build/
 .env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
 
-# Go/Backend
-Backend/vendor/
+# Backend Build
+Backend/main
+*.exe
+*.test
+*.out
+vendor/
+
+# Docker
+docker-compose.override.yml

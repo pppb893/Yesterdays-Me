@@ -1,0 +1,27 @@
+services:
+  backend:
+    build: 
+      context: ./Backend
+      dockerfile: Dockerfile
+    container_name: yesterdays-me-backend
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./Backend/diary.db:/app/diary.db
+    restart: unless-stopped
+    environment:
+      - GIN_MODE=release
+
+  frontend:
+    build: 
+      context: ./Frontend
+      dockerfile: Dockerfile
+    container_name: yesterdays-me-frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  diary-data: # Optional if using named volume instead of bind mount
