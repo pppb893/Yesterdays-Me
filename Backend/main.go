@@ -188,7 +188,7 @@ func main() {
 	r := gin.Default()
 
 	config := cors.DefaultConfig()
-	config.AllowOrigins = []string{"http://localhost:5173", "http://localhost:5174"}
+	config.AllowAllOrigins = true
 	config.AllowMethods = []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}
 	r.Use(cors.New(config))
 
@@ -202,7 +202,7 @@ func main() {
 	r.POST("/entries/:id/unlock", UnlockEntry)
 	r.POST("/entries/:id/respond", Respond)
 	r.DELETE("/entries/:id", DeleteEntry)
-	
+
 	// User Preferences (AI Learning)
 	r.GET("/preferences", GetPreferences)
 	r.POST("/preferences", SavePreference)
@@ -491,7 +491,9 @@ func GetAIPrompts(c *gin.Context) {
 
 	var recentTopics strings.Builder
 	for i, e := range entries {
-		if i >= 5 { break }
+		if i >= 5 {
+			break
+		}
 		recentTopics.WriteString(e.Title + " (mood: " + e.Mood + ")\n")
 	}
 
@@ -536,8 +538,12 @@ func GetWeeklyDigest(c *gin.Context) {
 
 	for _, e := range entries {
 		weekContent.WriteString(e.Title + ": " + e.Content[:min(100, len(e.Content))] + "\n")
-		if e.Mood != "" { moodCounts[e.Mood]++ }
-		if e.Status != "" { statusCounts[e.Status]++ }
+		if e.Mood != "" {
+			moodCounts[e.Mood]++
+		}
+		if e.Status != "" {
+			statusCounts[e.Status]++
+		}
 	}
 
 	ctx := context.Background()
@@ -552,13 +558,13 @@ func GetWeeklyDigest(c *gin.Context) {
 เขียนสรุปสั้นๆ 2-3 ประโยค เป็นภาษาไทย บอกแนวโน้มอารมณ์และคำแนะนำ`, len(entries), weekContent.String())
 
 	result, _ := client.Models.GenerateContent(ctx, "gemini-3-flash-preview", genai.Text(prompt), nil)
-	
+
 	c.JSON(http.StatusOK, gin.H{
-		"digest":   result.Text(),
-		"hasData":  true,
+		"digest":     result.Text(),
+		"hasData":    true,
 		"entryCount": len(entries),
-		"moods":    moodCounts,
-		"statuses": statusCounts,
+		"moods":      moodCounts,
+		"statuses":   statusCounts,
 	})
 }
 
@@ -584,7 +590,7 @@ func GetPatternAlerts(c *gin.Context) {
 	}
 
 	alerts := []gin.H{}
-	
+
 	if maxStreak >= 3 {
 		alerts = append(alerts, gin.H{
 			"type":    "critical",
@@ -660,7 +666,9 @@ func GetAIQuestions(c *gin.Context) {
 	context.WriteString("\nบันทึกล่าสุด:\n")
 	for _, e := range entries {
 		mood := e.Mood
-		if mood == "" { mood = "ไม่ระบุ" }
+		if mood == "" {
+			mood = "ไม่ระบุ"
+		}
 		context.WriteString(fmt.Sprintf("- %s (อารมณ์: %s)\n", e.Title, mood))
 	}
 

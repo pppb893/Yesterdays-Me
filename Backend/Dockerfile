@@ -13,6 +13,9 @@ RUN go mod download
 # Copy source code
 COPY . .
 
+# Tidy dependencies
+RUN go mod tidy
+
 # Build the application
 # CGO_ENABLED=1 is required for sqlite3
 RUN CGO_ENABLED=1 GOOS=linux go build -o main .
