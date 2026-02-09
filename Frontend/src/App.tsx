@@ -1,10 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
+import Login from './pages/Auth/Login';
+import Register from './pages/Auth/Register';
+import ProfileSettings from './components/ProfileSettings';
+import LogoutModal from './components/LogoutModal';
 import { FiCalendar } from "react-icons/fi";
+
 // =====================
 // Types
 // =====================
-type ViewState = 'dashboard' | 'write' | 'read' | 'summary' | 'calendar'
+type ViewState = 'dashboard' | 'write' | 'read' | 'summary' | 'calendar' | 'login' | 'register';
 
 type SummaryData = {
   stats: {
@@ -33,6 +38,12 @@ type DiaryEntry = {
   unlockAt: string
   createdAt: string
 }
+
+type UserProfile = {
+  username: string;
+  displayName: string;
+  avatar: string;
+};
 
 type Theme = {
   name: string
@@ -155,24 +166,38 @@ const Countdown = ({ target }: { target: string }) => {
   return <div className="countdown">{timeLeft}</div>
 }
 
-// =====================
-// App
-// =====================
-export default function App() {
-  const [view, setView] = useState<ViewState>('dashboard')
+
+// Auth Helper
+const authFetch = async (url: string, options: RequestInit = {}) => {
+  const token = localStorage.getItem('token');
+  const headers = {
+    'Authorization': `Bearer ${token}`,
+    'Content-Type': 'application/json',
+    ...(options.headers as any || {}),
+  };
+
+  const response = await fetch(url, { ...options, headers });
+  if (response.status === 401) {
+    // Token expired or invalid
+    localStorage.removeItem('token');
+    window.location.reload(); // Simple way to reset state to login
+  }
+  return response;
+};
+
+function App() {
+  const [view, setView] = useState<ViewState>('login'); // Default to login - Auth first
 
   // Writer state
-  const [writeTitle, setWriteTitle] = useState('')
-  const [writeContent, setWriteContent] = useState('')
-  const [writeMood, setWriteMood] = useState('')
+  const [writeTitle, setWriteTitle] = useState("");
+  const [writeContent, setWriteContent] = useState("");
+  const [writeMood, setWriteMood] = useState("");
   const MOOD_OPTIONS = useMemo(() => ['😊', '😢', '😠', '😰', '😴', '🤔', '💪', '❤️'], [])
 
   // Locked modal state
-  const [lockedModalOpen, setLockedModalOpen] = useState(false)
-  const [selectedEntry, setSelectedEntry] = useState<DiaryEntry | null>(null)
-
-  // Entries
-  const [entries, setEntries] = useState<DiaryEntry[]>([])
+  const [lockedModalOpen, setLockedModalOpen] = useState(false);
+  const [selectedEntry, setSelectedEntry] = useState<DiaryEntry | null>(null);
+  const [entries, setEntries] = useState<DiaryEntry[]>([]);
 
   // Read view state
   const [readEntry, setReadEntry] = useState<DiaryEntry | null>(null)
@@ -182,16 +207,20 @@ export default function App() {
   const [showResultModal, setShowResultModal] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
+  // Profile state
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [showProfileModal, setShowProfileModal] = useState(false);
+
   // Summary state
-  const [summaryData, setSummaryData] = useState<SummaryData | null>(null)
-  const [loadingSummary, setLoadingSummary] = useState(false)
+  const [summaryData, setSummaryData] = useState<SummaryData | null>(null);
+  const [loadingSummary, setLoadingSummary] = useState(false);
 
   // Calendar state
   const [currentMonth, setCurrentMonth] = useState(new Date())
 
   // Delete state
-  const [showDeleteModal, setShowDeleteModal] = useState(false)
-  const [entryToDelete, setEntryToDelete] = useState<DiaryEntry | null>(null)
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [entryToDelete, setEntryToDelete] = useState<DiaryEntry | null>(null);
 
   // AI features
   type AIQuestion = { id: number; text: string; category: string }
@@ -210,28 +239,47 @@ export default function App() {
   // Notification dedupe
   const notifiedRef = useRef<Set<number>>(new Set())
 
-  // =====================
+  // Logout state
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
+
+  // Check Auth on Mount
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      setView('dashboard');
+      fetchEntries();
+    } else {
+      setView('login');
+    }
+  }, []);
+
   // Theme init
-  // =====================
   useEffect(() => {
     const saved = localStorage.getItem('theme')
     const t = THEMES.find((x) => x.name === saved) || THEMES[0]
     applyTheme(t)
   }, [])
 
-  // =====================
   // Privacy blur persist
-  // =====================
   useEffect(() => {
     localStorage.setItem('privacyBlur', privacyBlur ? '1' : '0')
   }, [privacyBlur])
 
-  // =====================
   // Speech support check
-  // =====================
   useEffect(() => {
     setSpeechSupported('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)
   }, [])
+
+  // Request notification permission
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission()
+    }
+  }, [])
+
+  // =====================
+  // Actions
+  // =====================
 
   const startListening = () => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
@@ -248,12 +296,11 @@ export default function App() {
 
     // append only final results
     recognition.onresult = (event: any) => {
-      let finalText = ''
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const res = event.results[i]
-        if (res.isFinal) finalText += res[0].transcript
+      let transcript = '';
+      for (let i = 0; i < event.results.length; i++) {
+        transcript += event.results[i][0].transcript;
       }
-      if (finalText) setWriteContent((prev) => prev + finalText)
+      setWriteContent(prev => prev + transcript);
     }
 
     recognition.start()
@@ -268,21 +315,9 @@ export default function App() {
     }
   }
 
-  // =====================
-  // Notifications permission
-  // =====================
-  useEffect(() => {
-    if ('Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission()
-    }
-  }, [])
-
-  // =====================
-  // Fetch entries
-  // =====================
   const fetchEntries = async () => {
     try {
-      const res = await fetch(`${API_URL}/entries`)
+      const res = await authFetch(`${API_URL}/entries`)
       if (res.ok) {
         const data = await res.json()
         setEntries(Array.isArray(data) ? data : [])
@@ -292,13 +327,22 @@ export default function App() {
     }
   }
 
-  useEffect(() => {
-    fetchEntries()
-  }, [])
+  const fetchSingleEntry = async (id: number) => {
+    try {
+      const res = await authFetch(`${API_URL}/entries/${id}`)
+      if (res.ok) {
+        const entry = await res.json()
+        setReadEntry(entry)
+        setReflectionText(entry.reflection || '')
+        setSelectedStatus(null)
+        setAiResponse('')
+      }
+    } catch (err) {
+      console.error('Failed to fetch entry', err)
+    }
+  }
 
-  // =====================
   // Check unlocked + notify (dedupe)
-  // =====================
   useEffect(() => {
     const checkUnlocked = () => {
       const now = new Date()
@@ -326,31 +370,15 @@ export default function App() {
     return () => clearInterval(interval)
   }, [entries])
 
-  // =====================
-  // Fetch single entry
-  // =====================
-  const fetchSingleEntry = async (id: number) => {
-    try {
-      const res = await fetch(`${API_URL}/entries/${id}`)
-      if (res.ok) {
-        const entry = await res.json()
-        setReadEntry(entry)
-        setReflectionText(entry.reflection || '')
-        setSelectedStatus(null)
-        setAiResponse('')
-      }
-    } catch (err) {
-      console.error('Failed to fetch entry', err)
-    }
-  }
-
-  // =====================
   // Fetch AI features
-  // =====================
   useEffect(() => {
     const fetchAIFeatures = async () => {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+
       try {
-        const questionsRes = await fetch(`${API_URL}/ai/questions`)
+        // Fetch AI questions (interactive Q&A)
+        const questionsRes = await authFetch(`${API_URL}/ai/questions`);
         if (questionsRes.ok) {
           const data = await questionsRes.json()
           if (typeof data.questions === 'string') {
@@ -365,7 +393,8 @@ export default function App() {
           }
         }
 
-        const alertsRes = await fetch(`${API_URL}/ai/alerts`)
+        // Fetch pattern alerts
+        const alertsRes = await authFetch(`${API_URL}/ai/alerts`);
         if (alertsRes.ok) {
           const data = await alertsRes.json()
           setAiAlerts(data.alerts || [])
@@ -375,34 +404,51 @@ export default function App() {
       }
     }
 
-    fetchAIFeatures()
-  }, [entries])
+    const fetchProfile = async () => {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+      try {
+        const res = await authFetch(`${API_URL}/profile`);
+        if (res.ok) setUserProfile(await res.json());
+      } catch (err) { console.error("Failed to fetch profile", err); }
+    };
+
+    if (view !== 'login' && view !== 'register') {
+      fetchAIFeatures();
+      fetchProfile();
+    }
+  }, [entries, view]); // Dependencies from HEAD
+
+  const handleUpdateProfile = async (data: { displayName: string; avatar: string }) => {
+    try {
+      const res = await authFetch(`${API_URL}/profile`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+      if (res.ok) {
+        setUserProfile(prev => prev ? { ...prev, ...data } : null);
+      }
+    } catch (err) { console.error("Failed to update profile", err); }
+  };
 
   const saveAnswer = async (question: AIQuestion, answer: string) => {
     try {
-      await fetch(`${API_URL}/preferences`, {
+      await authFetch(`${API_URL}/preferences`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: question.text, answer, category: question.category }),
-      })
-      setAiQuestions((prev) => prev.filter((q) => q.id !== question.id))
-      setQuestionAnswers((prev) => {
-        const n = { ...prev }
-        delete n[question.id]
-        return n
-      })
-    } catch (err) {
-      console.error(err)
-    }
-  }
+        body: JSON.stringify({ question: question.text, answer, category: question.category })
+      });
+      // Remove answered question from list
+      setAiQuestions(prev => prev.filter(q => q.id !== question.id));
+      setQuestionAnswers(prev => { const n = { ...prev }; delete n[question.id]; return n; });
+    } catch (err) { console.error(err); }
+  };
 
-  // =====================
-  // Create entry (Seal) - NO STICKERS
-  // =====================
   const handleSealEntry = async () => {
     if (!writeTitle || !writeContent) return
     try {
-      const res = await fetch(`${API_URL}/entries`, {
+      const res = await authFetch(`${API_URL}/entries`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -423,9 +469,6 @@ export default function App() {
     }
   }
 
-  // =====================
-  // Locked / unlock
-  // =====================
   const handleCardClick = (entry: DiaryEntry) => {
     if (entry.isLocked) {
       setSelectedEntry(entry)
@@ -438,22 +481,19 @@ export default function App() {
 
   const handleUnlock = async (id: number) => {
     try {
-      const res = await fetch(`${API_URL}/entries/${id}/unlock`, { method: 'POST' })
-      if (res.ok) await fetchEntries()
-    } catch (err) {
-      console.error('Failed to unlock entry', err)
-    }
-  }
+      const res = await authFetch(`${API_URL}/entries/${id}/unlock`, { method: 'POST' });
+      if (res.ok) {
+        await fetchEntries();
+      }
+    } catch (err) { console.error("Failed to unlock entry", err); }
+  };
 
-  // =====================
-  // Submit reflection
-  // =====================
   const handleSubmitReflection = async () => {
     if (!readEntry || !selectedStatus) return
     setIsSubmitting(true)
 
     try {
-      const res = await fetch(`${API_URL}/entries/${readEntry.id}/respond`, {
+      const res = await authFetch(`${API_URL}/entries/${readEntry.id}/respond`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: selectedStatus, reflection: reflectionText }),
@@ -485,43 +525,20 @@ export default function App() {
     setAiResponse('')
   }
 
-  // =====================
-  // Delete
-  // =====================
   const handleDelete = async () => {
-    if (!entryToDelete) return
+    if (!entryToDelete) return;
     try {
-      await fetch(`${API_URL}/entries/${entryToDelete.id}`, { method: 'DELETE' })
-      await fetchEntries()
-      setShowDeleteModal(false)
-      setEntryToDelete(null)
+      await authFetch(`${API_URL}/entries/${entryToDelete.id}`, { method: 'DELETE' });
+      fetchEntries();
+      setShowDeleteModal(false);
+      setEntryToDelete(null);
       if (readEntry?.id === entryToDelete.id) {
-        setView('dashboard')
-        setReadEntry(null)
+        setView('dashboard');
+        setReadEntry(null);
       }
-    } catch (err) {
-      console.error(err)
-    }
-  }
+    } catch (err) { console.error(err); }
+  };
 
-  // =====================
-  // Summary fetch
-  // =====================
-  const openSummary = async () => {
-    setView('summary')
-    setLoadingSummary(true)
-    try {
-      const res = await fetch(`${API_URL}/summary`)
-      if (res.ok) setSummaryData(await res.json())
-    } catch (err) {
-      console.error(err)
-    }
-    setLoadingSummary(false)
-  }
-
-  // =====================
-  // Render
-  // =====================
   return (
     <div className={`app-layout ${privacyBlur ? 'privacy-blur' : ''}`}>
       {/* Sidebar */}
@@ -535,26 +552,42 @@ export default function App() {
 
         <nav className="sidebar-nav">
           <button className={`nav-item ${view === 'dashboard' ? 'active' : ''}`} onClick={() => setView('dashboard')}>
-            <span className="icon-box"><IconBook /></span>
-            <span>My Diary</span>
+            <span className="icon-box"><IconBook /></span><span>บันทึกของฉัน</span>
           </button>
           <button className={`nav-item ${view === 'summary' ? 'active' : ''}`} onClick={async () => {
             setView('summary');
             if (!summaryData) {
               setLoadingSummary(true);
               try {
-                const res = await fetch(`${API_URL}/summary`);
+                const res = await authFetch(`${API_URL}/summary`);
                 if (res.ok) setSummaryData(await res.json());
               } catch (err) { console.error(err); }
               setLoadingSummary(false);
             }
           }}>
-            <IconHome /><span>Summary</span>
+            <IconHome /><span>สรุปผล</span>
           </button>
 
           <button className={`nav-item ${view === 'calendar' ? 'active' : ''}`} onClick={() => setView('calendar')}>
-            <span className="icon-box"><FiCalendar className="calendar-icon" /></span>
-            <span>Calendar</span>
+            <span className="icon-box"><FiCalendar className="calendar-icon" /></span><span>ปฏิทิน</span>
+          </button>
+          <div style={{ flexGrow: 1 }}></div>
+
+          {/* User Profile Section */}
+          {userProfile && (
+            <div className="sidebar-profile" onClick={() => setShowProfileModal(true)}>
+              <div className="profile-avatar">
+                {userProfile.avatar || userProfile.username[0]?.toUpperCase()}
+              </div>
+              <div className="profile-info">
+                <div className="profile-name">{userProfile.displayName || userProfile.username}</div>
+                <div className="profile-handle">@{userProfile.username}</div>
+              </div>
+            </div>
+          )}
+
+          <button className="nav-item logout-btn" onClick={() => setShowLogoutModal(true)}>
+            🚪<span>ออกจากระบบ</span>
           </button>
 
         </nav>
@@ -571,13 +604,35 @@ export default function App() {
         </div>
       </aside>
 
+      {userProfile && (
+        <ProfileSettings
+          isOpen={showProfileModal}
+          onClose={() => setShowProfileModal(false)}
+          currentUser={userProfile}
+          onUpdate={handleUpdateProfile}
+        />
+      )}
+
       {/* Main Content */}
       <main className="main-content">
-        {view === 'dashboard' ? (
+        {view === 'login' ? (
+          <Login
+            onLoginSuccess={(username) => {
+              console.log("Logged in as", username);
+              setView('dashboard');
+            }}
+            onNavigateToRegister={() => setView('register')}
+          />
+        ) : view === 'register' ? (
+          <Register
+            onRegisterSuccess={() => setView('login')}
+            onNavigateToLogin={() => setView('login')}
+          />
+        ) : view === 'dashboard' ? (
           <div className="dashboard-view container">
             <header className="view-header">
-              <h1>My Diary</h1>
-              <p className="subtitle">Your safe space for thoughts.</p>
+              <h1>ไดอารี่ของฉัน</h1>
+              <p className="subtitle">พื้นที่ปลอดภัยสำหรับความคิดของคุณ</p>
             </header>
 
             {/* AI Alerts Banner */}
@@ -628,10 +683,8 @@ export default function App() {
 
             <div className="entries-grid">
               <div className="entry-card create-card" onClick={() => setView('write')}>
-                <div className="icon-wrapper">
-                  <IconPlus />
-                </div>
-                <span>New Entry</span>
+                <div className="icon-wrapper"><IconPlus /></div>
+                <span>บันทึกใหม่</span>
               </div>
 
               {entries.map((entry) => (
@@ -674,7 +727,7 @@ export default function App() {
                   onClick={async () => {
                     setLoadingSummary(true);
                     try {
-                      const res = await fetch(`${API_URL}/summary`);
+                      const res = await authFetch(`${API_URL}/summary`);
                       if (res.ok) setSummaryData(await res.json());
                     } catch (err) { console.error(err); }
                     setLoadingSummary(false);
@@ -790,7 +843,7 @@ export default function App() {
                   onClick={async () => {
                     setLoadingSummary(true);
                     try {
-                      const res = await fetch(`${API_URL}/summary`);
+                      const res = await authFetch(`${API_URL}/summary`);
                       if (res.ok) setSummaryData(await res.json());
                     } catch (err) { console.error(err); }
                     setLoadingSummary(false);
@@ -805,7 +858,7 @@ export default function App() {
         ) : view === 'calendar' ? (
           <div className="calendar-view container">
             <header className="view-header">
-              <h1>📅 Calendar</h1>
+              <h1>📅 ปฏิทิน</h1>
               <p className="subtitle">ดูประวัติบันทึกของคุณ</p>
             </header>
 
@@ -828,7 +881,7 @@ export default function App() {
                   const month = currentMonth.getMonth()
                   const firstDay = new Date(year, month, 1).getDay()
                   const daysInMonth = new Date(year, month + 1, 0).getDate()
-                  const days: JSX.Element[] = []
+                  const days: any[] = []
 
                   for (let i = 0; i < firstDay; i++) {
                     days.push(<div key={`empty-${i}`} className="calendar-day empty"></div>)
@@ -874,31 +927,14 @@ export default function App() {
           <div className="writer-view container">
             <div className="glass-panel writer-panel diary-paper">
               <div className="writer-header">
-                <h2>New Entry</h2>
-                <button
-                  className="btn-text"
-                  onClick={() => {
-                    setView('dashboard')
-                    setWriteTitle('')
-                    setWriteContent('')
-                    setWriteMood('')
-                  }}
-                >
-                  Cancel
-                </button>
+                <h2>บันทึกใหม่</h2>
+                <button className="btn-text" onClick={() => setView('dashboard')}>ยกเลิก</button>
               </div>
-
-              <input
-                type="text"
-                className={`diary-title-input ${privacyBlur ? 'blur-text' : ''}`}
-                placeholder="Title your thought..."
-                value={writeTitle}
-                onChange={(e) => setWriteTitle(e.target.value)}
-              />
+              <input type="text" className="diary-title-input" placeholder="ตั้งชื่อเรื่อง..." value={writeTitle} onChange={(e) => setWriteTitle(e.target.value)} />
 
               {/* Mood Picker */}
               <div className="mood-picker">
-                <span className="mood-label">How are you feeling?</span>
+                <span className="mood-label">วันนี้รู้สึกอย่างไร?</span>
                 <div className="mood-options">
                   {MOOD_OPTIONS.map((mood) => (
                     <button
@@ -915,8 +951,8 @@ export default function App() {
               {/* Textarea with Voice Button */}
               <div className="textarea-wrapper">
                 <textarea
-                  className={`diary-input ${privacyBlur ? 'blur-text' : ''}`}
-                  placeholder={isListening ? '🎤 กำลังฟัง... พูดได้เลย!' : "What's on your mind today? Let it all out..."}
+                  className="diary-input"
+                  placeholder={isListening ? "🎤 กำลังฟัง... พูดได้เลย!" : "มีอะไรในใจระบายออกมาได้เลย..."}
                   autoFocus
                   value={writeContent}
                   onChange={(e) => setWriteContent(e.target.value)}
@@ -934,23 +970,15 @@ export default function App() {
               </div>
 
               <div className="writer-actions">
-                <button className="btn-primary" onClick={handleSealEntry}>
-                  Seal & Release
-                </button>
+                <button className="btn-primary" onClick={handleSealEntry}>บันทึกและปล่อยวาง</button>
               </div>
             </div>
           </div>
         ) : view === 'read' && readEntry ? (
           <div className="read-view container">
             <div className="read-header-actions">
-              <button
-                className="btn-back"
-                onClick={() => {
-                  setView('dashboard')
-                  setReadEntry(null)
-                }}
-              >
-                <IconBack /> Back
+              <button className="btn-back" onClick={() => { setView('dashboard'); setReadEntry(null); }}>
+                <IconBack /> กลับ
               </button>
               <button
                 className="btn-delete"
@@ -967,7 +995,7 @@ export default function App() {
               {/* LEFT: Past Entry */}
               <div className="glass-panel read-card past-card diary-paper">
                 <div className="read-card-header">
-                  <span className="read-label">📜 Your Past Self</span>
+                  <span className="read-label">📜 ตัวคุณในอดีต</span>
                   <span className="read-date">{new Date(readEntry.createdAt).toLocaleDateString()}</span>
                 </div>
                 <h2 className={`read-title ${privacyBlur ? 'blur-text' : ''}`}>{readEntry.title}</h2>
@@ -977,7 +1005,7 @@ export default function App() {
               {/* RIGHT: Reflection */}
               <div className="glass-panel read-card reflection-card diary-paper">
                 <div className="read-card-header">
-                  <span className="read-label">💭 Reflection</span>
+                  <span className="read-label">💭 ไตร่ตรอง</span>
                 </div>
 
                 <div className="reflection-prompts">
@@ -1120,26 +1148,17 @@ export default function App() {
         {/* ===== Locked Modal ===== */}
         {lockedModalOpen && selectedEntry && (
           <div className="modal-overlay" onClick={() => setLockedModalOpen(false)}>
-            <div className="modal-content glass-panel" onClick={(e) => e.stopPropagation()}>
-              <div className="modal-icon">
-                <IconLock size={48} />
-              </div>
-              <h3>Not yet...</h3>
-              <p>It's not the right time to read this yet.</p>
-              <p style={{ marginTop: '0.5rem', color: 'var(--accent)' }}>Maybe you should take a deep breath first?</p>
+            <div className="modal-content glass-panel" onClick={e => e.stopPropagation()}>
+              <div className="modal-icon"><IconLock size={48} /></div>
+              <h3>ยังเปิดไม่ได้...</h3>
+              <p>ยังไม่ถึงเวลาที่จะอ่านบันทึกนี้</p>
+              <p style={{ marginTop: '0.5rem', color: 'hsl(45, 90%, 65%)' }}>ลองหายใจเข้าลึกๆ ก่อนไหม?</p>
               <div className="modal-buttons">
-                <button className="btn-secondary" onClick={() => setLockedModalOpen(false)}>
-                  I'll wait
-                </button>
-                <button
-                  className="btn-primary"
-                  onClick={() => {
-                    handleUnlock(selectedEntry.id)
-                    setLockedModalOpen(false)
-                  }}
-                >
-                  I'm Ready
-                </button>
+                <button className="btn-secondary" onClick={() => setLockedModalOpen(false)}>รอต่อไป</button>
+                <button className="btn-primary" onClick={() => {
+                  handleUnlock(selectedEntry.id);
+                  setLockedModalOpen(false);
+                }}>พร้อมแล้ว</button>
               </div>
             </div>
           </div>
@@ -1167,6 +1186,20 @@ export default function App() {
           </div>
         )}
       </main>
+
+      {/* Logout Modal Component */}
+      <LogoutModal
+        isOpen={showLogoutModal}
+        onClose={() => setShowLogoutModal(false)}
+        onConfirm={() => {
+          localStorage.removeItem('token');
+          setView('login');
+          setUserProfile(null);
+          setShowLogoutModal(false);
+        }}
+      />
     </div>
   )
 }
+
+export default App
