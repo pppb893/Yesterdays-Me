@@ -9,7 +9,11 @@ import { FiCalendar } from "react-icons/fi";
 // =====================
 // Types
 // =====================
-type ViewState = 'dashboard' | 'write' | 'read' | 'summary' | 'calendar' | 'login' | 'register';
+// =====================
+// Types
+// =====================
+type ViewState = 'dashboard' | 'write' | 'read' | 'summary' | 'calendar';
+type AuthModalState = 'none' | 'login' | 'register';
 
 type SummaryData = {
   stats: {
@@ -186,7 +190,9 @@ const authFetch = async (url: string, options: RequestInit = {}) => {
 };
 
 function App() {
-  const [view, setView] = useState<ViewState>('login'); // Default to login - Auth first
+  const [view, setView] = useState<ViewState>('dashboard');
+  const [authModal, setAuthModal] = useState<AuthModalState>('none');
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   // Writer state
   const [writeTitle, setWriteTitle] = useState("");
@@ -246,10 +252,10 @@ function App() {
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (token) {
-      setView('dashboard');
+      setIsAuthenticated(true);
       fetchEntries();
     } else {
-      setView('login');
+      setIsAuthenticated(false);
     }
   }, []);
 
@@ -280,6 +286,14 @@ function App() {
   // =====================
   // Actions
   // =====================
+
+  const handleAuthAction = (action: () => void) => {
+    if (isAuthenticated) {
+      action();
+    } else {
+      setAuthModal('login');
+    }
+  };
 
   const startListening = () => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
@@ -413,10 +427,8 @@ function App() {
       } catch (err) { console.error("Failed to fetch profile", err); }
     };
 
-    if (view !== 'login' && view !== 'register') {
-      fetchAIFeatures();
-      fetchProfile();
-    }
+    fetchAIFeatures();
+    fetchProfile();
   }, [entries, view]); // Dependencies from HEAD
 
   const handleUpdateProfile = async (data: { displayName: string; avatar: string }) => {
@@ -541,7 +553,7 @@ function App() {
 
   return (
     <div className={`app-layout ${privacyBlur ? 'privacy-blur' : ''}`}>
-      {/* Sidebar */}
+      {/* Sidebar - Always visible in guest mode */}
       <aside className="sidebar glass-panel">
         <div className="sidebar-header">
           <h3>H</h3>
@@ -554,7 +566,8 @@ function App() {
           <button className={`nav-item ${view === 'dashboard' ? 'active' : ''}`} onClick={() => setView('dashboard')}>
             <span className="icon-box"><IconBook /></span><span>บันทึกของฉัน</span>
           </button>
-          <button className={`nav-item ${view === 'summary' ? 'active' : ''}`} onClick={async () => {
+
+          <button className={`nav-item ${view === 'summary' ? 'active' : ''}`} onClick={() => handleAuthAction(async () => {
             setView('summary');
             if (!summaryData) {
               setLoadingSummary(true);
@@ -564,17 +577,17 @@ function App() {
               } catch (err) { console.error(err); }
               setLoadingSummary(false);
             }
-          }}>
+          })}>
             <IconHome /><span>สรุปผล</span>
           </button>
 
-          <button className={`nav-item ${view === 'calendar' ? 'active' : ''}`} onClick={() => setView('calendar')}>
+          <button className={`nav-item ${view === 'calendar' ? 'active' : ''}`} onClick={() => handleAuthAction(() => setView('calendar'))}>
             <span className="icon-box"><FiCalendar className="calendar-icon" /></span><span>ปฏิทิน</span>
           </button>
           <div style={{ flexGrow: 1 }}></div>
 
           {/* User Profile Section */}
-          {userProfile && (
+          {isAuthenticated && userProfile ? (
             <div className="sidebar-profile" onClick={() => setShowProfileModal(true)}>
               <div className="profile-avatar">
                 {userProfile.avatar || userProfile.username[0]?.toUpperCase()}
@@ -584,11 +597,17 @@ function App() {
                 <div className="profile-handle">@{userProfile.username}</div>
               </div>
             </div>
+          ) : (
+            <button className="nav-item logout-btn" style={{ background: 'white', border: '2px solid var(--accent)', color: 'hsl(220, 25%, 15%)', justifyContent: 'center', fontWeight: '800', fontSize: '1rem' }} onClick={() => setAuthModal('login')}>
+              <span>เข้าสู่ระบบ</span>
+            </button>
           )}
 
-          <button className="nav-item logout-btn" onClick={() => setShowLogoutModal(true)}>
-            🚪<span>ออกจากระบบ</span>
-          </button>
+          {isAuthenticated && (
+            <button className="nav-item logout-btn" onClick={() => setShowLogoutModal(true)}>
+              🚪<span>ออกจากระบบ</span>
+            </button>
+          )}
 
         </nav>
 
@@ -615,24 +634,16 @@ function App() {
 
       {/* Main Content */}
       <main className="main-content">
-        {view === 'login' ? (
-          <Login
-            onLoginSuccess={(username) => {
-              console.log("Logged in as", username);
-              setView('dashboard');
-            }}
-            onNavigateToRegister={() => setView('register')}
-          />
-        ) : view === 'register' ? (
-          <Register
-            onRegisterSuccess={() => setView('login')}
-            onNavigateToLogin={() => setView('login')}
-          />
-        ) : view === 'dashboard' ? (
+        {view === 'dashboard' ? (
           <div className="dashboard-view container">
             <header className="view-header">
-              <h1>ไดอารี่ของฉัน</h1>
-              <p className="subtitle">พื้นที่ปลอดภัยสำหรับความคิดของคุณ</p>
+              <div className="view-header-icon">
+                📝
+              </div>
+              <div className="view-header-text">
+                <h1>ไดอารี่ของฉัน</h1>
+                <p className="subtitle">พื้นที่ปลอดภัยสำหรับความคิดของคุณ</p>
+              </div>
             </header>
 
             {/* AI Alerts Banner */}
@@ -682,7 +693,7 @@ function App() {
             )}
 
             <div className="entries-grid">
-              <div className="entry-card create-card" onClick={() => setView('write')}>
+              <div className="entry-card create-card" onClick={() => handleAuthAction(() => setView('write'))}>
                 <div className="icon-wrapper"><IconPlus /></div>
                 <span>บันทึกใหม่</span>
               </div>
@@ -712,33 +723,38 @@ function App() {
               ))}
             </div>
 
-            <button className="fab-button mobile-only" onClick={() => setView('write')}>
+            <button className="fab-button mobile-only" onClick={() => handleAuthAction(() => setView('write'))}>
               <IconPlus />
             </button>
           </div>
         ) : view === 'summary' ? (
           <div className="summary-view container">
             <header className="view-header">
-              <h1>Mental Health Summary</h1>
-              <p className="subtitle">ภาพรวมสุขภาพจิตของคุณ</p>
-              {summaryData && (
-                <button
-                  className="btn-text"
-                  onClick={async () => {
-                    setLoadingSummary(true);
-                    try {
-                      const res = await authFetch(`${API_URL}/summary`);
-                      if (res.ok) setSummaryData(await res.json());
-                    } catch (err) { console.error(err); }
-                    setLoadingSummary(false);
-                  }}
-                  disabled={loadingSummary}
-                  style={{ marginTop: '0.5rem', fontSize: '0.9rem' }}
-                >
-                  🔄 อัปเดตข้อมูลล่าสุด
-                </button>
-              )}
+              <div className="view-header-icon">
+                📊
+              </div>
+              <div className="view-header-text">
+                <h1>สรุปผล</h1>
+                <p className="subtitle">ภาพรวมสุขภาพใจของคุณ</p>
+              </div>
             </header>
+            {summaryData && (
+              <button
+                className="btn-text"
+                onClick={async () => {
+                  setLoadingSummary(true);
+                  try {
+                    const res = await authFetch(`${API_URL}/summary`);
+                    if (res.ok) setSummaryData(await res.json());
+                  } catch (err) { console.error(err); }
+                  setLoadingSummary(false);
+                }}
+                disabled={loadingSummary}
+                style={{ marginTop: '0.5rem', fontSize: '0.9rem' }}
+              >
+                🔄 อัปเดตข้อมูลล่าสุด
+              </button>
+            )}
 
             {loadingSummary ? (
               <div className="loading-state">กำลังวิเคราะห์ข้อมูล...</div>
@@ -858,8 +874,13 @@ function App() {
         ) : view === 'calendar' ? (
           <div className="calendar-view container">
             <header className="view-header">
-              <h1>📅 ปฏิทิน</h1>
-              <p className="subtitle">ดูประวัติบันทึกของคุณ</p>
+              <div className="view-header-icon">
+                📅
+              </div>
+              <div className="view-header-text">
+                <h1>ปฏิทิน</h1>
+                <p className="subtitle">ดูประวัติบันทึกของคุณ</p>
+              </div>
             </header>
 
             <div className="glass-panel calendar-panel">
@@ -1193,11 +1214,46 @@ function App() {
         onClose={() => setShowLogoutModal(false)}
         onConfirm={() => {
           localStorage.removeItem('token');
-          setView('login');
+          setIsAuthenticated(false);
+          setEntries([]);
+          setSummaryData(null);
           setUserProfile(null);
+          setView('dashboard');
           setShowLogoutModal(false);
         }}
       />
+
+      {/* ===== Auth Modals ===== */}
+      {authModal === 'login' && (
+        <div className="modal-overlay" onClick={() => setAuthModal('none')}>
+          {/* Prevent click inside modal from closing it */}
+          <div className="modal-content glass-panel" onClick={(e) => e.stopPropagation()}>
+            <Login
+              onLoginSuccess={(username) => {
+                console.log("Logged in as", username);
+                setIsAuthenticated(true);
+                setAuthModal('none');
+                fetchEntries();
+                // We're already on dashboard or the protected route logic will handle next steps if needed
+                // But generally staying on dashboard is fine or we could pass a redirect callback later
+              }}
+              onNavigateToRegister={() => setAuthModal('register')}
+            />
+          </div>
+        </div>
+      )}
+
+      {authModal === 'register' && (
+        <div className="modal-overlay" onClick={() => setAuthModal('none')}>
+          <div className="modal-content glass-panel" onClick={(e) => e.stopPropagation()}>
+            <Register
+              onRegisterSuccess={() => setAuthModal('login')}
+              onNavigateToLogin={() => setAuthModal('login')}
+            />
+          </div>
+        </div>
+      )}
+
     </div>
   )
 }
