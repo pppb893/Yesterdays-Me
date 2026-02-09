@@ -347,15 +347,7 @@ function App() {
           <button className={`nav-item ${view === 'dashboard' ? 'active' : ''}`} onClick={() => setView('dashboard')}>
             <IconBook /><span>My Diary</span>
           </button>
-          <button className={`nav-item ${view === 'summary' ? 'active' : ''}`} onClick={async () => {
-            setView('summary');
-            setLoadingSummary(true);
-            try {
-              const res = await fetch(`${API_URL}/summary`);
-              if (res.ok) setSummaryData(await res.json());
-            } catch (err) { console.error(err); }
-            setLoadingSummary(false);
-          }}>
+          <button className={`nav-item ${view === 'summary' ? 'active' : ''}`} onClick={() => setView('summary')}>
             <IconHome /><span>Summary</span>
           </button>
           <button className={`nav-item ${view === 'calendar' ? 'active' : ''}`} onClick={() => setView('calendar')}>
@@ -459,6 +451,23 @@ function App() {
             <header className="view-header">
               <h1>Mental Health Summary</h1>
               <p className="subtitle">ภาพรวมสุขภาพจิตของคุณ</p>
+              {summaryData && (
+                <button
+                  className="btn-text"
+                  onClick={async () => {
+                    setLoadingSummary(true);
+                    try {
+                      const res = await fetch(`${API_URL}/summary`);
+                      if (res.ok) setSummaryData(await res.json());
+                    } catch (err) { console.error(err); }
+                    setLoadingSummary(false);
+                  }}
+                  disabled={loadingSummary}
+                  style={{ marginTop: '0.5rem', fontSize: '0.9rem' }}
+                >
+                  🔄 อัปเดตข้อมูลล่าสุด
+                </button>
+              )}
             </header>
 
             {loadingSummary ? (
@@ -556,7 +565,23 @@ function App() {
                 )}
               </div>
             ) : (
-              <div className="empty-state">ยังไม่มีข้อมูลเพียงพอ</div>
+              <div className="empty-state">
+                <p>กดปุ่มเพื่อวิเคราะห์สรุปสุขภาพจิตของคุณ</p>
+                <button
+                  className="btn-primary"
+                  onClick={async () => {
+                    setLoadingSummary(true);
+                    try {
+                      const res = await fetch(`${API_URL}/summary`);
+                      if (res.ok) setSummaryData(await res.json());
+                    } catch (err) { console.error(err); }
+                    setLoadingSummary(false);
+                  }}
+                  disabled={loadingSummary}
+                >
+                  {loadingSummary ? 'กำลังประมวลผล...' : '✨ เริ่มการวิเคราะห์'}
+                </button>
+              </div>
             )}
           </div>
 

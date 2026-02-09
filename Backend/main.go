@@ -9,15 +9,70 @@ import (
 	"strings"
 	"time"
 
+	"os"
+
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/joho/godotenv"
 	"google.golang.org/genai"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
 
 // Gemini API Key
-const GEMINI_API_KEY = "AIzaSyBNcXnIocELgHhnV0VIyq9SZkqfH0wdvxg"
+var geminiKeys []string
+
+func loadAPIKeys() {
+	err := godotenv.Load()
+	if err != nil {
+		log.Println("Warning: .env file not found, using default key")
+	}
+
+	keys := os.Getenv("GEMINI_API_KEYS")
+	if keys != "" {
+		geminiKeys = strings.Split(keys, ",")
+	} else {
+		// Fallback
+		geminiKeys = []string{"AIzaSyBNcXnIocELgHhnV0VIyq9SZkqfH0wdvxg"}
+	}
+}
+
+func generateContent(ctx context.Context, prompt string) (string, error) {
+	var lastErr error
+
+	for _, key := range geminiKeys {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+
+		client, err := genai.NewClient(ctx, &genai.ClientConfig{
+			APIKey:  key,
+			Backend: genai.BackendGeminiAPI,
+		})
+		if err != nil {
+			lastErr = err
+			log.Printf("Failed to create client with key ...%s: %v", key[len(key)-4:], err)
+			continue
+		}
+
+		result, err := client.Models.GenerateContent(
+			ctx,
+			"gemini-2.0-flash", // Updated to latest model, or use existing
+			genai.Text(prompt),
+			nil,
+		)
+		if err != nil {
+			lastErr = err
+			log.Printf("Gemini API error with key ...%s: %v", key[len(key)-4:], err)
+			continue // Try next key
+		}
+
+		return result.Text(), nil
+	}
+
+	return "", fmt.Errorf("all API keys failed. Last error: %v", lastErr)
+}
 
 // --- Models ---
 type DiaryEntry struct {
@@ -63,14 +118,6 @@ func InitDB() {
 func callGeminiAPI(originalContent, reflection, status string, needHelpCount int) (string, error) {
 	ctx := context.Background()
 
-	client, err := genai.NewClient(ctx, &genai.ClientConfig{
-		APIKey:  GEMINI_API_KEY,
-		Backend: genai.BackendGeminiAPI,
-	})
-	if err != nil {
-		return "", err
-	}
-
 	var statusContext string
 	var urgencyNote string
 
@@ -110,17 +157,8 @@ func callGeminiAPI(originalContent, reflection, status string, needHelpCount int
 
 ตอบกลับ 2-3 ประโยค เป็นภาษาไทย อบอุ่น และเฉพาะเจาะจงกับสิ่งที่เขาเขียน`, originalContent, reflection, statusContext, urgencyNote)
 
-	result, err := client.Models.GenerateContent(
-		ctx,
-		"gemini-3-flash-preview",
-		genai.Text(prompt),
-		nil,
-	)
-	if err != nil {
-		return "", err
-	}
-
-	return result.Text(), nil
+	// Call standardized helper
+	return generateContent(ctx, prompt)
 }
 
 // --- Controllers ---
@@ -182,6 +220,7 @@ func CreateEntry(c *gin.Context) {
 }
 
 func main() {
+	loadAPIKeys()
 	InitDB()
 	fmt.Println("Database initialized.")
 
@@ -423,12 +462,7 @@ func GetSummary(c *gin.Context) {
 	aiSummary := ""
 	if totalEntries > 0 {
 		ctx := context.Background()
-		client, err := genai.NewClient(ctx, &genai.ClientConfig{
-			APIKey:  GEMINI_API_KEY,
-			Backend: genai.BackendGeminiAPI,
-		})
-		if err == nil {
-			prompt := fmt.Sprintf(`คุณคือนักจิตวิทยา กำลังวิเคราะห์ภาพรวมสุขภาพจิตของผู้ใช้จากข้อมูลทั้งหมดที่มี
+		prompt := fmt.Sprintf(`คุณคือนักจิตวิทยา กำลังวิเคราะห์ภาพรวมสุขภาพจิตของผู้ใช้จากข้อมูลทั้งหมดที่มี
 
 📊 สถิติ:
 - บันทึกทั้งหมด: %d รายการ
@@ -451,13 +485,13 @@ func GetSummary(c *gin.Context) {
 %s
 
 สรุปภาพรวมสุขภาพจิตของผู้ใช้ใน 3-4 ประโยค เป็นภาษาไทย วิเคราะห์จากเนื้อหาและการเปลี่ยนแปลง บอกจุดแข็ง จุดที่ต้องระวัง และคำแนะนำเฉพาะทาง`,
-				totalEntries, overItCount, stillDealingCount, needHelpCount, pendingCount, mentalScore,
-				allContent.String(), allReflections.String(), allAIResponses.String(), allStatuses.String())
+			totalEntries, overItCount, stillDealingCount, needHelpCount, pendingCount, mentalScore,
+			allContent.String(), allReflections.String(), allAIResponses.String(), allStatuses.String())
 
-			result, err := client.Models.GenerateContent(ctx, "gemini-3-flash-preview", genai.Text(prompt), nil)
-			if err == nil {
-				aiSummary = result.Text()
-			}
+		var err error
+		aiSummary, err = generateContent(ctx, prompt)
+		if err != nil {
+			log.Printf("Failed to generate summary: %v", err)
 		}
 	}
 
@@ -498,27 +532,19 @@ func GetAIPrompts(c *gin.Context) {
 	}
 
 	ctx := context.Background()
-	client, err := genai.NewClient(ctx, &genai.ClientConfig{
-		APIKey:  GEMINI_API_KEY,
-		Backend: genai.BackendGeminiAPI,
-	})
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
 
 	prompt := fmt.Sprintf(`Based on these recent diary topics, suggest 3 personalized writing prompts in Thai:
 %s
 
 Generate 3 short prompts (1 sentence each) that would help the user explore their emotions. Format as JSON array: ["prompt1", "prompt2", "prompt3"]`, recentTopics.String())
 
-	result, err := client.Models.GenerateContent(ctx, "gemini-3-flash-preview", genai.Text(prompt), nil)
+	resultText, err := generateContent(ctx, prompt)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"prompts": []string{"วันนี้รู้สึกอย่างไรบ้าง?", "มีเรื่องอะไรค้างคาในใจไหม?", "อยากบอกอะไรกับตัวเองในอนาคต?"}})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"prompts": result.Text()})
+	c.JSON(http.StatusOK, gin.H{"prompts": resultText})
 }
 
 // GetWeeklyDigest generates a weekly mental health summary
@@ -547,20 +573,16 @@ func GetWeeklyDigest(c *gin.Context) {
 	}
 
 	ctx := context.Background()
-	client, _ := genai.NewClient(ctx, &genai.ClientConfig{
-		APIKey:  GEMINI_API_KEY,
-		Backend: genai.BackendGeminiAPI,
-	})
 
 	prompt := fmt.Sprintf(`สรุปสุขภาพจิตประจำสัปดาห์ จากบันทึก %d รายการ:
 %s
 
 เขียนสรุปสั้นๆ 2-3 ประโยค เป็นภาษาไทย บอกแนวโน้มอารมณ์และคำแนะนำ`, len(entries), weekContent.String())
 
-	result, _ := client.Models.GenerateContent(ctx, "gemini-3-flash-preview", genai.Text(prompt), nil)
+	resultText, _ := generateContent(ctx, prompt)
 
 	c.JSON(http.StatusOK, gin.H{
-		"digest":     result.Text(),
+		"digest":     resultText,
 		"hasData":    true,
 		"entryCount": len(entries),
 		"moods":      moodCounts,
@@ -673,19 +695,6 @@ func GetAIQuestions(c *gin.Context) {
 	}
 
 	ctx := context2.Background()
-	client, err := genai.NewClient(ctx, &genai.ClientConfig{
-		APIKey:  GEMINI_API_KEY,
-		Backend: genai.BackendGeminiAPI,
-	})
-	if err != nil {
-		// Fallback questions
-		c.JSON(http.StatusOK, gin.H{"questions": []gin.H{
-			{"id": 1, "text": "วันนี้คุณรู้สึกอย่างไรบ้าง?", "category": "emotion"},
-			{"id": 2, "text": "มีอะไรที่ทำให้คุณยิ้มได้วันนี้ไหม?", "category": "positive"},
-			{"id": 3, "text": "เวลาเครียดคุณมักทำอะไรเพื่อผ่อนคลาย?", "category": "coping"},
-		}})
-		return
-	}
 
 	prompt := fmt.Sprintf(`จากข้อมูลผู้ใช้นี้:
 %s
@@ -694,7 +703,7 @@ func GetAIQuestions(c *gin.Context) {
 คำถามควรเกี่ยวกับ: อารมณ์, วิธีจัดการความเครียด, สิ่งที่ทำให้มีความสุข
 ตอบเป็น JSON: [{"id":1,"text":"คำถาม","category":"emotion/coping/positive"}]`, context.String())
 
-	result, err := client.Models.GenerateContent(ctx, "gemini-3-flash-preview", genai.Text(prompt), nil)
+	resultText, err := generateContent(ctx, prompt)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"questions": []gin.H{
 			{"id": 1, "text": "วันนี้คุณรู้สึกอย่างไรบ้าง?", "category": "emotion"},
@@ -702,5 +711,5 @@ func GetAIQuestions(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"questions": result.Text()})
+	c.JSON(http.StatusOK, gin.H{"questions": resultText})
 }
