@@ -91,6 +91,8 @@ type DiaryEntry struct {
 	IsLocked      bool      `json:"isLocked"`
 	UnlockAt      time.Time `json:"unlockAt"`
 	CreatedAt     time.Time `json:"createdAt"`
+	IsPublic      bool      `json:"isPublic"`
+	IsAnonymous   bool      `json:"isAnonymous"`
 }
 
 // UserPreference stores AI learning data from user Q&A
@@ -115,7 +117,7 @@ func InitDB() {
 	if err != nil {
 		log.Fatal("Failed to connect to database:", err)
 	}
-	DB.AutoMigrate(&DiaryEntry{}, &UserPreference{})
+	DB.AutoMigrate(&DiaryEntry{}, &UserPreference{}, &Comment{})
 }
 
 // --- Gemini API using official SDK ---
@@ -169,7 +171,7 @@ func callGeminiAPI(originalContent, reflection, status string, needHelpCount int
 func GetEntries(c *gin.Context) {
 	username := c.GetString("username")
 	var entries []DiaryEntry
-	result := DB.Where("username = ?", username).Order("created_at desc").Find(&entries)
+	result := DB.Where("username = ? AND is_public = ?", username, false).Order("created_at desc").Find(&entries)
 	if result.Error != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": result.Error.Error()})
 		return
@@ -196,9 +198,11 @@ func GetEntries(c *gin.Context) {
 
 func CreateEntry(c *gin.Context) {
 	var input struct {
-		Title   string `json:"title" binding:"required"`
-		Content string `json:"content" binding:"required"`
-		Mood    string `json:"mood"`
+		Title       string `json:"title" binding:"required"`
+		Content     string `json:"content" binding:"required"`
+		Mood        string `json:"mood"`
+		IsPublic    bool   `json:"isPublic"`
+		IsAnonymous bool   `json:"isAnonymous"`
 	}
 
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -206,15 +210,21 @@ func CreateEntry(c *gin.Context) {
 		return
 	}
 
-	unlockTime := time.Now().Add(24 * time.Hour)
 	username := c.GetString("username")
+	unlockTime := time.Now().Add(24 * time.Hour)
+	// If it's public, it should be available immediately (no lock)
+	if input.IsPublic {
+		unlockTime = time.Now()
+	}
 
 	entry := DiaryEntry{
-		Username: username,
-		Title:    input.Title,
-		Content:  input.Content,
-		Mood:     input.Mood,
-		UnlockAt: unlockTime,
+		Username:    username,
+		Title:       input.Title,
+		Content:     input.Content,
+		Mood:        input.Mood,
+		UnlockAt:    unlockTime,
+		IsPublic:    input.IsPublic,
+		IsAnonymous: input.IsAnonymous,
 	}
 
 	result := DB.Create(&entry)
@@ -242,6 +252,8 @@ func main() {
 	// Public Auth routes
 	r.POST("/register", auth.Register)
 	r.POST("/login", auth.Login)
+	r.GET("/public/entries", GetPublicEntries)
+	r.GET("/entries/:id/comments", GetComments)
 
 	// Protected Routes
 	protected := r.Group("/")
@@ -266,6 +278,10 @@ func main() {
 		// Profile Routes
 		protected.GET("/profile", auth.GetProfile)
 		protected.POST("/profile", auth.UpdateProfile)
+
+		// Public Mode Routes
+		protected.POST("/entries/:id/public", TogglePublic)
+		protected.POST("/entries/:id/comments", PostComment)
 	}
 
 	r.Run(":8080")

@@ -12,7 +12,7 @@ import { FiCalendar } from "react-icons/fi";
 // =====================
 // Types
 // =====================
-type ViewState = 'dashboard' | 'write' | 'read' | 'summary' | 'calendar';
+type ViewState = 'dashboard' | 'write' | 'read' | 'summary' | 'calendar' | 'public';
 type AuthModalState = 'none' | 'login' | 'register';
 
 type SummaryData = {
@@ -40,6 +40,18 @@ type DiaryEntry = {
   preview: string
   isLocked: boolean
   unlockAt: string
+  createdAt: string
+  isPublic?: boolean
+  isAnonymous?: boolean
+  username?: string
+}
+
+type Comment = {
+  id: number
+  diaryId: number
+  username: string
+  content: string
+  isAnonymous: boolean
   createdAt: string
 }
 
@@ -93,6 +105,14 @@ const IconBack = () => (
   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <line x1="19" y1="12" x2="5" y2="12" />
     <polyline points="12 19 5 12 12 5" />
+  </svg>
+)
+
+const IconPublic = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="10" />
+    <line x1="2" y1="12" x2="22" y2="12" />
+    <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
   </svg>
 )
 
@@ -198,6 +218,9 @@ function App() {
   const [writeTitle, setWriteTitle] = useState("");
   const [writeContent, setWriteContent] = useState("");
   const [writeMood, setWriteMood] = useState("");
+  const [writeIsPublic, setWriteIsPublic] = useState(false);
+  const [writeIsAnonymous, setWriteIsAnonymous] = useState(false);
+  const [writeMode, setWriteMode] = useState<'private' | 'public'>('private');
   const MOOD_OPTIONS = useMemo(() => ['😊', '😢', '😠', '😰', '😴', '🤔', '💪', '❤️'], [])
 
   // Locked modal state
@@ -212,6 +235,13 @@ function App() {
   const [aiResponse, setAiResponse] = useState('')
   const [showResultModal, setShowResultModal] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  // Public Feed state
+  const [publicEntries, setPublicEntries] = useState<DiaryEntry[]>([])
+  const [comments, setComments] = useState<Record<number, Comment[]>>({})
+  const [newComment, setNewComment] = useState("");
+  const [commentIsAnonymous, setCommentIsAnonymous] = useState(false);
+  const [loadingComments, setLoadingComments] = useState<Record<number, boolean>>({});
 
   // Profile state
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
@@ -341,6 +371,59 @@ function App() {
     }
   }
 
+  const fetchPublicEntries = async () => {
+    try {
+      const res = await authFetch(`${API_URL}/public/entries`)
+      if (res.ok) {
+        const data = await res.json()
+        setPublicEntries(Array.isArray(data) ? data : [])
+      }
+    } catch (err) {
+      console.error('Failed to fetch public entries', err)
+    }
+  }
+
+  const fetchComments = async (diaryId: number) => {
+    setLoadingComments(prev => ({ ...prev, [diaryId]: true }));
+    try {
+      const res = await authFetch(`${API_URL}/entries/${diaryId}/comments`);
+      if (res.ok) {
+        const data = await res.json();
+        setComments(prev => ({ ...prev, [diaryId]: data }));
+      }
+    } catch (err) {
+      console.error('Failed to fetch comments', err);
+    } finally {
+      setLoadingComments(prev => ({ ...prev, [diaryId]: false }));
+    }
+  };
+
+  const handlePostComment = async (diaryId: number) => {
+    if (!isAuthenticated) {
+      setAuthModal('login');
+      return;
+    }
+    if (!newComment.trim()) return;
+    try {
+      const res = await authFetch(`${API_URL}/entries/${diaryId}/comments`, {
+        method: 'POST',
+        body: JSON.stringify({
+          content: newComment,
+          isAnonymous: commentIsAnonymous
+        })
+      });
+      if (res.ok) {
+        setNewComment("");
+        fetchComments(diaryId);
+      } else {
+        const errorData = await res.json();
+        alert(errorData.reason || errorData.error || "Failed to post comment");
+      }
+    } catch (err) {
+      console.error('Failed to post comment', err);
+    }
+  };
+
   const fetchSingleEntry = async (id: number) => {
     try {
       const res = await authFetch(`${API_URL}/entries/${id}`)
@@ -467,14 +550,25 @@ function App() {
           title: writeTitle,
           content: writeContent,
           mood: writeMood,
+          isPublic: writeIsPublic,
+          isAnonymous: writeIsAnonymous,
         }),
       })
       if (res.ok) {
+        const wasPublic = writeIsPublic;
         setWriteTitle('')
         setWriteContent('')
         setWriteMood('')
+        setWriteMode('private')
+        setWriteIsPublic(false)
+        setWriteIsAnonymous(false)
         await fetchEntries()
-        setView('dashboard')
+        if (wasPublic) {
+          setView('public');
+          fetchPublicEntries();
+        } else {
+          setView('dashboard');
+        }
       }
     } catch (err) {
       console.error('Failed to post entry', err)
@@ -564,7 +658,7 @@ function App() {
 
         <nav className="sidebar-nav">
           <button className={`nav-item ${view === 'dashboard' ? 'active' : ''}`} onClick={() => setView('dashboard')}>
-            <span className="icon-box"><IconBook /></span><span>บันทึกของฉัน</span>
+            <span className="icon-box"><IconHome /></span><span>ไดอารี่ของฉัน</span>
           </button>
 
           <button className={`nav-item ${view === 'summary' ? 'active' : ''}`} onClick={() => handleAuthAction(async () => {
@@ -578,12 +672,20 @@ function App() {
               setLoadingSummary(false);
             }
           })}>
-            <IconHome /><span>สรุปผล</span>
+            <span className="icon-box"><IconBook /></span><span>สรุปผล AI</span>
           </button>
 
           <button className={`nav-item ${view === 'calendar' ? 'active' : ''}`} onClick={() => handleAuthAction(() => setView('calendar'))}>
             <span className="icon-box"><FiCalendar className="calendar-icon" /></span><span>ปฏิทิน</span>
           </button>
+
+          <button className={`nav-item ${view === 'public' ? 'active' : ''}`} onClick={() => {
+            setView('public');
+            fetchPublicEntries();
+          }}>
+            <span className="icon-box"><IconPublic /></span><span>กระดานสาธารณะ</span>
+          </button>
+
           <div style={{ flexGrow: 1 }}></div>
 
           {/* User Profile Section */}
@@ -693,12 +795,16 @@ function App() {
             )}
 
             <div className="entries-grid">
-              <div className="entry-card create-card" onClick={() => handleAuthAction(() => setView('write'))}>
+              <div className="entry-card create-card" onClick={() => handleAuthAction(() => {
+                setWriteMode('private');
+                setWriteIsPublic(false);
+                setView('write');
+              })}>
                 <div className="icon-wrapper"><IconPlus /></div>
                 <span>บันทึกใหม่</span>
               </div>
 
-              {entries.map((entry) => (
+              {entries.filter(e => !e.isPublic).map((entry) => (
                 <div key={entry.id} className={`entry-card ${entry.isLocked ? 'locked-card' : ''}`} onClick={() => handleCardClick(entry)}>
                   {entry.isLocked ? (
                     <div className="locked-card-content">
@@ -723,7 +829,11 @@ function App() {
               ))}
             </div>
 
-            <button className="fab-button mobile-only" onClick={() => handleAuthAction(() => setView('write'))}>
+            <button className="fab-button" onClick={() => handleAuthAction(() => {
+              setWriteMode('private');
+              setWriteIsPublic(false);
+              setView('write');
+            })}>
               <IconPlus />
             </button>
           </div>
@@ -948,8 +1058,8 @@ function App() {
           <div className="writer-view container">
             <div className="glass-panel writer-panel diary-paper">
               <div className="writer-header">
-                <h2>บันทึกใหม่</h2>
-                <button className="btn-text" onClick={() => setView('dashboard')}>ยกเลิก</button>
+                <h2>{writeMode === 'public' ? 'แบ่งปันเรื่องราวสาธารณะ' : 'บันทึกใหม่'}</h2>
+                <button className="btn-text" onClick={() => setView(writeMode === 'public' ? 'public' : 'dashboard')}>ยกเลิก</button>
               </div>
               <input type="text" className="diary-title-input" placeholder="ตั้งชื่อเรื่อง..." value={writeTitle} onChange={(e) => setWriteTitle(e.target.value)} />
 
@@ -991,7 +1101,17 @@ function App() {
               </div>
 
               <div className="writer-actions">
-                <button className="btn-primary" onClick={handleSealEntry}>บันทึกและปล่อยวาง</button>
+                <div className="share-controls">
+                  {writeMode === 'public' && (
+                    <label className="checkbox-control">
+                      <input type="checkbox" checked={writeIsAnonymous} onChange={(e) => setWriteIsAnonymous(e.target.checked)} />
+                      <span>โพสต์แบบไม่ระบุตัวตน</span>
+                    </label>
+                  )}
+                </div>
+                <button className="btn-primary" onClick={handleSealEntry}>
+                  {writeMode === 'public' ? 'แชร์ลงกระดาน' : 'บันทึกและปล่อยวาง'}
+                </button>
               </div>
             </div>
           </div>
@@ -1079,6 +1199,96 @@ function App() {
                 </div>
               </div>
             </div>
+          </div>
+        ) : view === 'public' ? (
+          <div className="public-view container">
+            <header className="view-header">
+              <div className="view-header-icon">🌍</div>
+              <div className="view-header-text">
+                <h1>กระดานสาธารณะ</h1>
+                <p className="subtitle">แบ่งปันและให้กำลังใจซึ่งกันและกัน</p>
+              </div>
+            </header>
+
+            <div className="public-feed">
+              {publicEntries.length === 0 ? (
+                <div className="empty-state glass-panel">ยังไม่มีบันทึกสาธารณะในตอนนี้</div>
+              ) : (
+                publicEntries.map((entry) => (
+                  <div key={entry.id} className="public-entry-card glass-panel diary-paper">
+                    <div className="entry-author-row">
+                      <span className="author-name">{entry.username === 'Anonymous' ? '👤 ไม่ระบุตัวตน' : `👤 ${entry.username}`}</span>
+                      <span className="entry-date">{new Date(entry.createdAt).toLocaleDateString()}</span>
+                    </div>
+                    <h3 className="public-entry-title">{entry.title}</h3>
+                    <div className="public-entry-content">{entry.content}</div>
+                    {entry.mood && <div className="public-entry-mood">อารมณ์ตอนเขียน: {entry.mood}</div>}
+
+                    {/* Comments Section */}
+                    <div className="comments-section">
+                      <button
+                        className="btn-text show-comments-btn"
+                        onClick={() => {
+                          if (!comments[entry.id]) fetchComments(entry.id);
+                        }}
+                      >
+                        💭 ความคิดเห็น ({comments[entry.id]?.length || 0})
+                      </button>
+
+                      {(comments[entry.id] || loadingComments[entry.id]) && (
+                        <div className="comments-list">
+                          {loadingComments[entry.id] ? (
+                            <div className="loading-comments">กำลังโหลดความคิดเห็น...</div>
+                          ) : (
+                            comments[entry.id]?.map((comment) => (
+                              <div key={comment.id} className="comment-item">
+                                <div className="comment-author">
+                                  <strong>{comment.username}</strong>
+                                  <span className="comment-date">{new Date(comment.createdAt).toLocaleTimeString()}</span>
+                                </div>
+                                <div className="comment-content">{comment.content}</div>
+                              </div>
+                            ))
+                          )}
+
+                          <div className="comment-input-area">
+                            <textarea
+                              placeholder="ส่งกำลังใจ หรือแสดงความคิดเห็น..."
+                              value={newComment}
+                              onChange={(e) => setNewComment(e.target.value)}
+                            ></textarea>
+                            <div className="comment-actions">
+                              <label className="checkbox-control">
+                                <input
+                                  type="checkbox"
+                                  checked={commentIsAnonymous}
+                                  onChange={(e) => setCommentIsAnonymous(e.target.checked)}
+                                />
+                                <span>ไม่ระบุตัวตน</span>
+                              </label>
+                              <button
+                                className="btn-primary btn-sm"
+                                onClick={() => handlePostComment(entry.id)}
+                                disabled={!newComment.trim()}
+                              >
+                                ส่ง
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+            <button className="fab-button" onClick={() => handleAuthAction(() => {
+              setWriteMode('public');
+              setWriteIsPublic(true);
+              setView('write');
+            })}>
+              <IconPlus />
+            </button>
           </div>
         ) : null}
 
