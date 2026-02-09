@@ -17,6 +17,8 @@ import (
 	"google.golang.org/genai"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+
+	"dt-backend/controller/auth"
 )
 
 // Gemini API Key
@@ -77,6 +79,7 @@ func generateContent(ctx context.Context, prompt string) (string, error) {
 // --- Models ---
 type DiaryEntry struct {
 	ID            uint      `json:"id" gorm:"primaryKey"`
+	Username      string    `json:"username"` // Link to auth user
 	Title         string    `json:"title"`
 	Content       string    `json:"content"`
 	Mood          string    `json:"mood"` // Emoji mood when writing
@@ -93,6 +96,7 @@ type DiaryEntry struct {
 // UserPreference stores AI learning data from user Q&A
 type UserPreference struct {
 	ID        uint      `json:"id" gorm:"primaryKey"`
+	Username  string    `json:"username"`
 	Question  string    `json:"question"`
 	Answer    string    `json:"answer"`
 	Category  string    `json:"category"` // emotion, coping, trigger, etc.
@@ -163,8 +167,9 @@ func callGeminiAPI(originalContent, reflection, status string, needHelpCount int
 
 // --- Controllers ---
 func GetEntries(c *gin.Context) {
+	username := c.GetString("username")
 	var entries []DiaryEntry
-	result := DB.Order("created_at desc").Find(&entries)
+	result := DB.Where("username = ?", username).Order("created_at desc").Find(&entries)
 	if result.Error != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": result.Error.Error()})
 		return
@@ -202,8 +207,10 @@ func CreateEntry(c *gin.Context) {
 	}
 
 	unlockTime := time.Now().Add(24 * time.Hour)
+	username := c.GetString("username")
 
 	entry := DiaryEntry{
+		Username: username,
 		Title:    input.Title,
 		Content:  input.Content,
 		Mood:     input.Mood,
@@ -222,6 +229,7 @@ func CreateEntry(c *gin.Context) {
 func main() {
 	loadAPIKeys()
 	InitDB()
+	auth.InitAuthDB()
 	fmt.Println("Database initialized.")
 
 	r := gin.Default()
@@ -231,29 +239,43 @@ func main() {
 	config.AllowMethods = []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}
 	r.Use(cors.New(config))
 
-	r.GET("/entries", GetEntries)
-	r.GET("/entries/:id", GetEntry)
-	r.GET("/summary", GetSummary)
-	r.GET("/ai/prompts", GetAIPrompts)          // AI writing prompts
-	r.GET("/ai/weekly-digest", GetWeeklyDigest) // Weekly mental health digest
-	r.GET("/ai/alerts", GetPatternAlerts)       // Negative pattern detection
-	r.POST("/entries", CreateEntry)
-	r.POST("/entries/:id/unlock", UnlockEntry)
-	r.POST("/entries/:id/respond", Respond)
-	r.DELETE("/entries/:id", DeleteEntry)
+	// Public Auth routes
+	r.POST("/register", auth.Register)
+	r.POST("/login", auth.Login)
 
-	// User Preferences (AI Learning)
-	r.GET("/preferences", GetPreferences)
-	r.POST("/preferences", SavePreference)
-	r.GET("/ai/questions", GetAIQuestions) // Interactive questions
+	// Protected Routes
+	protected := r.Group("/")
+	protected.Use(auth.AuthMiddleware())
+	{
+		protected.GET("/entries", GetEntries)
+		protected.GET("/entries/:id", GetEntry)
+		protected.GET("/summary", GetSummary)
+		protected.GET("/ai/prompts", GetAIPrompts)
+		protected.GET("/ai/weekly-digest", GetWeeklyDigest)
+		protected.GET("/ai/alerts", GetPatternAlerts)
+		protected.POST("/entries", CreateEntry)
+		protected.POST("/entries/:id/unlock", UnlockEntry)
+		protected.POST("/entries/:id/respond", Respond)
+		protected.DELETE("/entries/:id", DeleteEntry)
+
+		// User Preferences
+		protected.GET("/preferences", GetPreferences)
+		protected.POST("/preferences", SavePreference)
+		protected.GET("/ai/questions", GetAIQuestions)
+
+		// Profile Routes
+		protected.GET("/profile", auth.GetProfile)
+		protected.POST("/profile", auth.UpdateProfile)
+	}
 
 	r.Run(":8080")
 }
 
 func GetEntry(c *gin.Context) {
 	id := c.Param("id")
+	username := c.GetString("username")
 	var entry DiaryEntry
-	result := DB.First(&entry, id)
+	result := DB.Where("id = ? AND username = ?", id, username).First(&entry)
 	if result.Error != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Entry not found"})
 		return
@@ -272,6 +294,7 @@ func GetEntry(c *gin.Context) {
 
 func Respond(c *gin.Context) {
 	id := c.Param("id")
+	username := c.GetString("username")
 	var input struct {
 		Status     string `json:"status" binding:"required"`
 		Reflection string `json:"reflection"`
@@ -283,7 +306,7 @@ func Respond(c *gin.Context) {
 	}
 
 	var entry DiaryEntry
-	result := DB.First(&entry, id)
+	result := DB.Where("id = ? AND username = ?", id, username).First(&entry)
 	if result.Error != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Entry not found"})
 		return
@@ -328,9 +351,10 @@ func Respond(c *gin.Context) {
 
 func UnlockEntry(c *gin.Context) {
 	id := c.Param("id")
+	username := c.GetString("username")
 
 	var entry DiaryEntry
-	result := DB.First(&entry, id)
+	result := DB.Where("id = ? AND username = ?", id, username).First(&entry)
 	if result.Error != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Entry not found"})
 		return
@@ -345,9 +369,10 @@ func UnlockEntry(c *gin.Context) {
 // DeleteEntry removes a diary entry
 func DeleteEntry(c *gin.Context) {
 	id := c.Param("id")
+	username := c.GetString("username")
 
 	var entry DiaryEntry
-	result := DB.First(&entry, id)
+	result := DB.Where("id = ? AND username = ?", id, username).First(&entry)
 	if result.Error != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Entry not found"})
 		return
@@ -359,8 +384,11 @@ func DeleteEntry(c *gin.Context) {
 
 // GetSummary returns mental health statistics and AI analysis
 func GetSummary(c *gin.Context) {
+	val, _ := c.Get("username")
+	username := val.(string)
+
 	var entries []DiaryEntry
-	DB.Find(&entries)
+	DB.Where("username = ?", username).Find(&entries)
 
 	// Generate hash of current data to detect changes
 	var dataForHash strings.Builder
@@ -520,8 +548,9 @@ func GetSummary(c *gin.Context) {
 
 // GetAIPrompts generates personalized writing prompts based on patterns
 func GetAIPrompts(c *gin.Context) {
+	username := c.GetString("username")
 	var entries []DiaryEntry
-	DB.Find(&entries)
+	DB.Where("username = ?", username).Find(&entries)
 
 	var recentTopics strings.Builder
 	for i, e := range entries {
@@ -550,8 +579,9 @@ Generate 3 short prompts (1 sentence each) that would help the user explore thei
 // GetWeeklyDigest generates a weekly mental health summary
 func GetWeeklyDigest(c *gin.Context) {
 	weekAgo := time.Now().AddDate(0, 0, -7)
+	username := c.GetString("username")
 	var entries []DiaryEntry
-	DB.Where("created_at >= ?", weekAgo).Find(&entries)
+	DB.Where("username = ? AND created_at >= ?", username, weekAgo).Find(&entries)
 
 	if len(entries) == 0 {
 		c.JSON(http.StatusOK, gin.H{"digest": "สัปดาห์นี้ยังไม่มีบันทึก ลองเขียนอะไรสักอย่างสิ!", "hasData": false})
@@ -592,8 +622,9 @@ func GetWeeklyDigest(c *gin.Context) {
 
 // GetPatternAlerts detects negative patterns and provides support
 func GetPatternAlerts(c *gin.Context) {
+	username := c.GetString("username")
 	var entries []DiaryEntry
-	DB.Order("created_at desc").Limit(10).Find(&entries)
+	DB.Where("username = ?", username).Order("created_at desc").Limit(10).Find(&entries)
 
 	needHelpCount := 0
 	consecutiveNeedHelp := 0
@@ -644,8 +675,9 @@ func GetPatternAlerts(c *gin.Context) {
 
 // GetPreferences returns all stored user preferences
 func GetPreferences(c *gin.Context) {
+	username := c.GetString("username")
 	var prefs []UserPreference
-	DB.Find(&prefs)
+	DB.Where("username = ?", username).Find(&prefs)
 	c.JSON(http.StatusOK, prefs)
 }
 
@@ -663,6 +695,7 @@ func SavePreference(c *gin.Context) {
 	}
 
 	pref := UserPreference{
+		Username: c.GetString("username"),
 		Question: input.Question,
 		Answer:   input.Answer,
 		Category: input.Category,
@@ -674,10 +707,11 @@ func SavePreference(c *gin.Context) {
 // GetAIQuestions generates personalized questions based on user history
 func GetAIQuestions(c *gin.Context) {
 	// Get existing preferences and entries to personalize questions
+	username := c.GetString("username")
 	var prefs []UserPreference
 	var entries []DiaryEntry
-	DB.Find(&prefs)
-	DB.Order("created_at desc").Limit(5).Find(&entries)
+	DB.Where("username = ?", username).Find(&prefs)
+	DB.Where("username = ?", username).Order("created_at desc").Limit(5).Find(&entries)
 
 	// Build context for AI
 	var context strings.Builder

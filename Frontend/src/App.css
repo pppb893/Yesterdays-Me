@@ -1387,3 +1387,328 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* ===================================
+   USER PROFILE & SIDEBAR FOOTER
+   =================================== */
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.sidebar-footer {
+  margin-top: auto;
+  /* Pushes to bottom */
+  padding-top: 16px;
+  border-top: 1px solid hsla(220, 20%, 30%, 0.3);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sidebar-profile {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 12px;
+  background: hsla(220, 30%, 15%, 0.4);
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 1px solid transparent;
+  user-select: none;
+}
+
+.sidebar-profile:hover {
+  background: hsla(220, 30%, 25%, 0.6);
+  border-color: hsla(260, 50%, 60%, 0.3);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px hsla(0, 0%, 0%, 0.2);
+}
+
+.profile-avatar {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, hsl(260, 80%, 70%), hsl(320, 80%, 65%));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.4rem;
+  color: white;
+  box-shadow: 0 4px 10px hsla(280, 50%, 40%, 0.4);
+}
+
+.profile-info {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.profile-name {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: hsl(0, 0%, 95%);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.profile-handle {
+  font-size: 0.8rem;
+  color: hsl(220, 15%, 70%);
+}
+
+.logout-btn {
+  margin-top: 4px !important;
+  border: 1px solid hsla(0, 50%, 50%, 0.2) !important;
+  color: hsl(0, 60%, 70%) !important;
+  border-radius: 12px !important;
+  justify-content: center !important;
+}
+
+.logout-btn:hover {
+  background: hsla(0, 60%, 40%, 0.15) !important;
+  border-color: hsla(0, 60%, 50%, 0.5) !important;
+  color: hsl(0, 70%, 80%) !important;
+}
+
+/* ===================================
+   PREMIUM PROFILE MODAL
+   =================================== */
+.profile-modal-glass {
+  background: hsla(220, 40%, 8%, 0.7);
+  backdrop-filter: blur(20px);
+  border: 1px solid hsla(220, 20%, 40%, 0.3);
+  border-radius: 24px;
+  box-shadow: 0 20px 50px hsla(0, 0%, 0%, 0.5);
+  width: 100%;
+  max-width: 420px;
+  padding: 32px;
+  text-align: left;
+  animation: modalPop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes modalPop {
+  from {
+    opacity: 0;
+    transform: scale(0.9) translateY(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.modal-header h2 {
+  font-size: 1.5rem;
+  background: linear-gradient(135deg, #fff, #ccc);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin: 0;
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  color: hsla(220, 20%, 60%, 0.8);
+  font-size: 2rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.close-btn:hover {
+  color: #fff;
+}
+
+.profile-preview-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 28px;
+}
+
+.avatar-preview-ring {
+  position: relative;
+  border-radius: 50%;
+  padding: 4px;
+  background: linear-gradient(135deg, hsl(260, 80%, 60%), hsl(320, 80%, 60%));
+  box-shadow: 0 8px 20px hsla(280, 60%, 40%, 0.4);
+}
+
+.avatar-xl,
+.avatar-placeholder-xl {
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  background: hsla(220, 30%, 15%, 1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 4rem;
+  border: 4px solid hsla(220, 40%, 8%, 1);
+}
+
+.edit-avatar-hint {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  background: hsl(220, 80%, 60%);
+  border: 2px solid hsla(220, 40%, 8%, 1);
+  color: white;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+
+.edit-avatar-hint:hover {
+  transform: scale(1.1);
+}
+
+.preview-label {
+  margin-top: 12px;
+  color: hsl(220, 20%, 60%);
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.form-section {
+  margin-bottom: 24px;
+}
+
+.section-label {
+  display: block;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: hsl(220, 20%, 80%);
+  margin-bottom: 8px;
+}
+
+.modern-input {
+  width: 100%;
+  background: hsla(220, 30%, 15%, 0.6);
+  border: 1px solid hsla(220, 20%, 40%, 0.3);
+  border-radius: 12px;
+  padding: 12px 16px;
+  color: white;
+  font-size: 1rem;
+  transition: all 0.2s;
+}
+
+.modern-input:focus {
+  outline: none;
+  border-color: hsl(260, 70%, 60%);
+  background: hsla(220, 30%, 20%, 0.8);
+  box-shadow: 0 0 0 3px hsla(260, 70%, 60%, 0.15);
+}
+
+.emoji-grid-modern {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.emoji-choice {
+  font-size: 1.5rem;
+  background: hsla(220, 30%, 20%, 0.4);
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.emoji-choice:hover {
+  background: hsla(220, 30%, 30%, 0.8);
+  transform: scale(1.15);
+}
+
+.emoji-choice.active {
+  background: hsla(260, 60%, 30%, 0.5);
+  border-color: hsl(260, 80%, 70%);
+  box-shadow: 0 0 12px hsla(260, 70%, 60%, 0.3);
+  transform: scale(1.1);
+}
+
+.modern-input-small {
+  width: 100%;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid hsla(220, 20%, 40%, 0.5);
+  padding: 8px 0;
+  color: hsl(220, 20%, 80%);
+  font-size: 0.9rem;
+  transition: border 0.2s;
+}
+
+.modern-input-small:focus {
+  outline: none;
+  border-color: hsl(260, 70%, 60%);
+}
+
+.modal-footer {
+  display: flex;
+  gap: 12px;
+  margin-top: 32px;
+}
+
+.btn-ghost {
+  flex: 1;
+  padding: 12px;
+  background: transparent;
+  border: 1px solid hsla(220, 20%, 50%, 0.3);
+  color: hsl(220, 20%, 80%);
+  border-radius: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-ghost:hover {
+  background: hsla(220, 20%, 50%, 0.1);
+  color: white;
+}
+
+.btn-gradient {
+  flex: 2;
+  padding: 12px;
+  background: linear-gradient(135deg, hsl(260, 80%, 60%), hsl(320, 80%, 60%));
+  border: none;
+  color: white;
+  border-radius: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 12px hsla(280, 60%, 40%, 0.4);
+  transition: all 0.2s;
+}
+
+.btn-gradient:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px hsla(280, 70%, 40%, 0.5);
+}
+
+.btn-gradient:disabled {
+  opacity: 0.7;
+  cursor: default;
+  transform: none;
+}
