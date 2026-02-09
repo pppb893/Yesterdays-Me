@@ -31,5 +31,3 @@ Backend/main
 *.out
 vendor/
 
-# Docker
-docker-compose.override.yml
