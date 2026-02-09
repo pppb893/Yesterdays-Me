@@ -1,0 +1,46 @@
+services:
+  backend:
+    build:
+      context: ./Backend
+      dockerfile: Dockerfile.dev
+    container_name: yesterdays-me-backend
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./Backend/diary.db:/app/diary.db
+      - ./Backend:/app
+    restart: unless-stopped
+    command: go run .
+    environment:
+      - GIN_MODE=release
+
+  frontend:
+    build:
+      context: ./Frontend
+      dockerfile: Dockerfile.dev
+    container_name: yesterdays-me-frontend
+    ports:
+      - "5173:80"
+    volumes:
+      - ./Frontend:/app
+      - /app/node_modules
+    command: npm run dev -- --host
+    environment:
+      - BACKEND_URL=http://backend:8080
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  ngrok:
+    image: ngrok/ngrok:latest
+    restart: unless-stopped
+    command: http frontend:5173
+    environment:
+      NGROK_AUTHTOKEN: 35H9A73ChRawrgRmOIXo8Aq0b0N_4ab5QWxZi2wCGG1GsrErP
+    ports:
+      - 4040:4040
+    depends_on:
+      - frontend
+
+volumes:
+  diary-data: # Optional if using named volume instead of bind mount

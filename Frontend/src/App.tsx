@@ -81,7 +81,7 @@ const IconBack = () => (
   </svg>
 )
 
-const API_URL = 'http://localhost:8080'
+const API_URL = "/api";
 
 // =====================
 // Themes (LIGHT)
@@ -538,10 +538,18 @@ export default function App() {
             <span className="icon-box"><IconBook /></span>
             <span>My Diary</span>
           </button>
-
-          <button className={`nav-item ${view === 'summary' ? 'active' : ''}`} onClick={openSummary}>
-            <span className="icon-box"><IconHome /></span>
-            <span>Summary</span>
+          <button className={`nav-item ${view === 'summary' ? 'active' : ''}`} onClick={async () => {
+            setView('summary');
+            if (!summaryData) {
+              setLoadingSummary(true);
+              try {
+                const res = await fetch(`${API_URL}/summary`);
+                if (res.ok) setSummaryData(await res.json());
+              } catch (err) { console.error(err); }
+              setLoadingSummary(false);
+            }
+          }}>
+            <IconHome /><span>Summary</span>
           </button>
 
           <button className={`nav-item ${view === 'calendar' ? 'active' : ''}`} onClick={() => setView('calendar')}>
@@ -660,6 +668,23 @@ export default function App() {
             <header className="view-header">
               <h1>Mental Health Summary</h1>
               <p className="subtitle">ภาพรวมสุขภาพจิตของคุณ</p>
+              {summaryData && (
+                <button
+                  className="btn-text"
+                  onClick={async () => {
+                    setLoadingSummary(true);
+                    try {
+                      const res = await fetch(`${API_URL}/summary`);
+                      if (res.ok) setSummaryData(await res.json());
+                    } catch (err) { console.error(err); }
+                    setLoadingSummary(false);
+                  }}
+                  disabled={loadingSummary}
+                  style={{ marginTop: '0.5rem', fontSize: '0.9rem' }}
+                >
+                  🔄 อัปเดตข้อมูลล่าสุด
+                </button>
+              )}
             </header>
 
             {loadingSummary ? (
@@ -758,7 +783,23 @@ export default function App() {
                 )}
               </div>
             ) : (
-              <div className="empty-state">ยังไม่มีข้อมูลเพียงพอ</div>
+              <div className="empty-state">
+                <p>ยังไม่มีสรุปสุขภาพจิตของคุณ</p>
+                <button
+                  className="btn-primary"
+                  onClick={async () => {
+                    setLoadingSummary(true);
+                    try {
+                      const res = await fetch(`${API_URL}/summary`);
+                      if (res.ok) setSummaryData(await res.json());
+                    } catch (err) { console.error(err); }
+                    setLoadingSummary(false);
+                  }}
+                  disabled={loadingSummary}
+                >
+                  {loadingSummary ? 'กำลังประมวลผล...' : '🔄 ลองวิเคราะห์อีกครั้ง'}
+                </button>
+              </div>
             )}
           </div>
         ) : view === 'calendar' ? (
