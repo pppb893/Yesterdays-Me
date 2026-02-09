@@ -347,7 +347,17 @@ function App() {
           <button className={`nav-item ${view === 'dashboard' ? 'active' : ''}`} onClick={() => setView('dashboard')}>
             <IconBook /><span>My Diary</span>
           </button>
-          <button className={`nav-item ${view === 'summary' ? 'active' : ''}`} onClick={() => setView('summary')}>
+          <button className={`nav-item ${view === 'summary' ? 'active' : ''}`} onClick={async () => {
+            setView('summary');
+            if (!summaryData) {
+              setLoadingSummary(true);
+              try {
+                const res = await fetch(`${API_URL}/summary`);
+                if (res.ok) setSummaryData(await res.json());
+              } catch (err) { console.error(err); }
+              setLoadingSummary(false);
+            }
+          }}>
             <IconHome /><span>Summary</span>
           </button>
           <button className={`nav-item ${view === 'calendar' ? 'active' : ''}`} onClick={() => setView('calendar')}>
@@ -566,7 +576,7 @@ function App() {
               </div>
             ) : (
               <div className="empty-state">
-                <p>กดปุ่มเพื่อวิเคราะห์สรุปสุขภาพจิตของคุณ</p>
+                <p>ยังไม่มีสรุปสุขภาพจิตของคุณ</p>
                 <button
                   className="btn-primary"
                   onClick={async () => {
@@ -579,7 +589,7 @@ function App() {
                   }}
                   disabled={loadingSummary}
                 >
-                  {loadingSummary ? 'กำลังประมวลผล...' : '✨ เริ่มการวิเคราะห์'}
+                  {loadingSummary ? 'กำลังประมวลผล...' : '🔄 ลองวิเคราะห์อีกครั้ง'}
                 </button>
               </div>
             )}
