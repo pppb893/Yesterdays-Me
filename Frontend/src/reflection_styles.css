@@ -1,0 +1,86 @@
+/* ======================
+    REFLECTION HISTORY & FINISHED STATE
+   ====================== */
+
+.reflection-history {
+    margin-bottom: 24px;
+    padding: 16px;
+    background: rgba(255, 255, 255, 0.4);
+    border-radius: 12px;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.reflection-history h4 {
+    margin: 0 0 12px 0;
+    font-size: 1rem;
+    color: var(--text-secondary);
+}
+
+.history-item {
+    padding: 12px;
+    background: rgba(255, 255, 255, 0.6);
+    border-radius: 8px;
+    margin-bottom: 10px;
+    border-left: 3px solid var(--accent);
+}
+
+.history-date {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    display: block;
+    margin-bottom: 4px;
+}
+
+.history-content {
+    font-style: italic;
+    color: var(--text-primary);
+    margin: 4px 0;
+}
+
+.history-status {
+    display: inline-block;
+    font-size: 0.8rem;
+    padding: 2px 8px;
+    border-radius: 12px;
+    background: rgba(0, 0, 0, 0.05);
+    margin-top: 4px;
+}
+
+.history-ai {
+    margin-top: 8px;
+    font-size: 0.85rem;
+    color: var(--accent);
+    background: rgba(var(--accent-rgb), 0.1);
+    padding: 6px 10px;
+    border-radius: 8px;
+}
+
+/* Finished State */
+.finished-state {
+    text-align: center;
+    padding: 30px;
+}
+
+.finished-badge {
+    display: inline-block;
+    padding: 8px 16px;
+    background: #4caf50;
+    color: white;
+    border-radius: 20px;
+    font-weight: bold;
+    margin-bottom: 20px;
+    box-shadow: 0 4px 10px rgba(76, 175, 80, 0.3);
+}
+
+.final-summary {
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0.4));
+    border: 1px solid rgba(255, 255, 255, 0.6);
+    padding: 20px;
+}
+
+.final-summary h3 {
+    color: #fbc02d;
+    /* Gold */
+    margin-top: 0;
+}

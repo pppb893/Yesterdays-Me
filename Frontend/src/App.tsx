@@ -30,6 +30,15 @@ type SummaryData = {
   aiSummary: string
 }
 
+type ReflectionHistory = {
+  id: number
+  diaryEntryId: number
+  content: string
+  status: string
+  aiResponse: string
+  createdAt: string
+}
+
 type DiaryEntry = {
   id: number
   title: string
@@ -44,6 +53,9 @@ type DiaryEntry = {
   isPublic?: boolean
   isAnonymous?: boolean
   username?: string
+  isFinished?: boolean
+  aiResponse?: string
+  reflections?: ReflectionHistory[]
 }
 
 type Comment = {
@@ -278,12 +290,40 @@ function App() {
   // Logout state
   const [showLogoutModal, setShowLogoutModal] = useState(false);
 
+  // Help Modal state
+  const [showHelpModal, setShowHelpModal] = useState(false);
+
+  // Daily Quote logic
+  const QUOTES = [
+    "“ความสุขไม่ได้มาจากการทำทุกอย่างให้เพอร์เฟกต์ แต่มาจากการมองเห็นความเพอร์เฟกต์ในสิ่งไม่เพอร์เฟกต์” ✨",
+    "“วันแย่ๆ ไม่ได้แปลว่าชีวิตแย่ พรุ่งนี้ก็เช้าแล้ว ☀️”",
+    "“ใจดีกับตัวเองบ้างนะ เธอทำดีที่สุดแล้ว 💛”",
+    "“การพักผ่อนไม่ใช่ความขี้เกียจ แต่เป็นการชาร์จพลัง 💪”",
+    "“กอดตัวเองแน่นๆ นะ วันนี้เก่งมากแล้ว 🤗”",
+    "“รอยยิ้มของคุณคือเครื่องประดับที่สวยที่สุด 😊”",
+    "“ความล้มเหลวคือบันไดสู่ความสำเร็จ ไม่ใช่จุดจบ 🪜”",
+    "“อนุญาตให้ตัวเองเศร้าได้ แต่สัญญาว่าจะยิ้มให้ได้อีกครั้งนะ 🌈”",
+    "“ทุกเรื่องราวที่ผ่านเข้ามา คือบทเรียนที่ทำให้เราเติบโต 🌱”",
+    "“อย่าเปรียบเทียบชีวิตตัวเองกับใคร ดอกไม้แต่ละชนิดบานในเวลาที่ต่างกัน 🌺”",
+    "“ความสุขเกิดขึ้นได้ง่ายๆ แค่เริ่มจากการพอใจในสิ่งที่ตัวเองมี 💖”",
+    "“ไม่มีใครสมบูรณ์แบบ และนั่นคือเสน่ห์ที่แท้จริงของความเป็นมนุษย์ ✨”",
+    "“ขอบคุณตัวเองที่อดทนผ่านเรื่องยากๆ มาได้จนถึงวันนี้ 🙏”",
+    "“เชื่อมั่นในตัวเองนะ แสงสว่างในตัวคุณส่องประกายเสมอ 💫”"
+  ];
+  const [dailyQuote, setDailyQuote] = useState("");
+
+  useEffect(() => {
+    // Pick a random quote once on mount
+    setDailyQuote(QUOTES[Math.floor(Math.random() * QUOTES.length)]);
+  }, []);
+
   // Check Auth on Mount
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (token) {
       setIsAuthenticated(true);
       fetchEntries();
+      fetchUserProfile();
     } else {
       setIsAuthenticated(false);
     }
@@ -370,6 +410,18 @@ function App() {
       console.error('Failed to fetch entries', err)
     }
   }
+
+  const fetchUserProfile = async () => {
+    try {
+      const res = await authFetch(`${API_URL}/profile`);
+      if (res.ok) {
+        const data = await res.json();
+        setUserProfile(data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch profile", err);
+    }
+  };
 
   const fetchPublicEntries = async () => {
     try {
@@ -473,46 +525,64 @@ function App() {
       const token = localStorage.getItem('token');
       if (!token) return;
 
+      const cacheKey = 'aiFeaturesCache';
+      const cached = localStorage.getItem(cacheKey);
+      const now = new Date().getTime();
+      const CACHE_DURATION = 60 * 60 * 1000; // 1 hour
+
+      if (cached) {
+        const { timestamp, questions, alerts } = JSON.parse(cached);
+        if (now - timestamp < CACHE_DURATION) {
+          console.log('Using cached AI features');
+          setAiQuestions(questions || []);
+          setAiAlerts(alerts || []);
+          return;
+        }
+      }
+
       try {
         // Fetch AI questions (interactive Q&A)
+        let questions = [];
         const questionsRes = await authFetch(`${API_URL}/ai/questions`);
         if (questionsRes.ok) {
           const data = await questionsRes.json()
           if (typeof data.questions === 'string') {
             try {
               const parsed = JSON.parse(data.questions)
-              setAiQuestions(Array.isArray(parsed) ? parsed : [])
+              questions = Array.isArray(parsed) ? parsed : []
             } catch {
-              setAiQuestions([])
+              questions = []
             }
           } else if (Array.isArray(data.questions)) {
-            setAiQuestions(data.questions)
+            questions = data.questions
           }
         }
+        setAiQuestions(questions);
 
         // Fetch pattern alerts
+        let alerts = [];
         const alertsRes = await authFetch(`${API_URL}/ai/alerts`);
         if (alertsRes.ok) {
           const data = await alertsRes.json()
-          setAiAlerts(data.alerts || [])
+          alerts = data.alerts || []
         }
-      } catch (err) {
-        console.error(err)
-      }
-    }
+        setAiAlerts(alerts);
 
-    const fetchProfile = async () => {
-      const token = localStorage.getItem('token');
-      if (!token) return;
-      try {
-        const res = await authFetch(`${API_URL}/profile`);
-        if (res.ok) setUserProfile(await res.json());
-      } catch (err) { console.error("Failed to fetch profile", err); }
+        // Save to cache
+        localStorage.setItem(cacheKey, JSON.stringify({
+          timestamp: now,
+          questions,
+          alerts
+        }));
+
+      } catch (err) {
+        console.error("Failed to fetch AI features:", err);
+      }
     };
 
     fetchAIFeatures();
-    fetchProfile();
-  }, [entries, view]); // Dependencies from HEAD
+  }, []);
+
 
   const handleUpdateProfile = async (data: { displayName: string; avatar: string }) => {
     try {
@@ -564,8 +634,10 @@ function App() {
         setWriteIsAnonymous(false)
         await fetchEntries()
         if (wasPublic) {
-          setView('public');
-          fetchPublicEntries();
+          // Public board hidden, redirect to dashboard even if posted as public
+          // setView('public'); 
+          // fetchPublicEntries();
+          setView('dashboard');
         } else {
           setView('dashboard');
         }
@@ -651,9 +723,11 @@ function App() {
       <aside className="sidebar glass-panel">
         <div className="sidebar-header">
           <h3>H</h3>
-          <button className="settings-gear" onClick={() => setSettingsOpen(true)} title="Settings">
-            ⚙️
-          </button>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button className="settings-gear" onClick={() => setSettingsOpen(true)} title="Settings" style={{ position: 'static' }}>
+              ⚙️
+            </button>
+          </div>
         </div>
 
         <nav className="sidebar-nav">
@@ -672,27 +746,36 @@ function App() {
               setLoadingSummary(false);
             }
           })}>
-            <span className="icon-box"><IconBook /></span><span>สรุปผล AI</span>
+            <span className="icon-box"><IconBook /></span><span>สรุปการเติบโต</span>
           </button>
 
           <button className={`nav-item ${view === 'calendar' ? 'active' : ''}`} onClick={() => handleAuthAction(() => setView('calendar'))}>
             <span className="icon-box"><FiCalendar className="calendar-icon" /></span><span>ปฏิทิน</span>
           </button>
 
-          <button className={`nav-item ${view === 'public' ? 'active' : ''}`} onClick={() => {
+          {/* <button className={`nav-item ${view === 'public' ? 'active' : ''}`} onClick={() => {
             setView('public');
             fetchPublicEntries();
           }}>
             <span className="icon-box"><IconPublic /></span><span>กระดานสาธารณะ</span>
+          </button> */}
+
+          <button className="nav-item" onClick={() => setShowHelpModal(true)}>
+            <span className="icon-box">❓</span><span>คู่มือการใช้งาน</span>
           </button>
 
           <div style={{ flexGrow: 1 }}></div>
 
           {/* User Profile Section */}
-          {isAuthenticated && userProfile ? (
+          {/* User Profile Section or Login Button */}
+          {!isAuthenticated ? (
+            <button className="nav-item login-nav-btn" style={{ background: 'white', border: '2px solid var(--accent)', color: 'hsl(220, 25%, 15%)', justifyContent: 'center', fontWeight: '800', fontSize: '1rem' }} onClick={() => setAuthModal('login')}>
+              <span>เข้าสู่ระบบ</span>
+            </button>
+          ) : userProfile ? (
             <div className="sidebar-profile" onClick={() => setShowProfileModal(true)}>
               <div className="profile-avatar">
-                {userProfile.avatar || userProfile.username[0]?.toUpperCase()}
+                {userProfile.avatar || (userProfile.username ? userProfile.username[0].toUpperCase() : '?')}
               </div>
               <div className="profile-info">
                 <div className="profile-name">{userProfile.displayName || userProfile.username}</div>
@@ -700,9 +783,12 @@ function App() {
               </div>
             </div>
           ) : (
-            <button className="nav-item logout-btn" style={{ background: 'white', border: '2px solid var(--accent)', color: 'hsl(220, 25%, 15%)', justifyContent: 'center', fontWeight: '800', fontSize: '1rem' }} onClick={() => setAuthModal('login')}>
-              <span>เข้าสู่ระบบ</span>
-            </button>
+            <div className="sidebar-profile">
+              <div className="profile-avatar">...</div>
+              <div className="profile-info">
+                <div className="profile-name">กำลังโหลด...</div>
+              </div>
+            </div>
           )}
 
           {isAuthenticated && (
@@ -722,6 +808,12 @@ function App() {
             </label>
           </div>
           <p className="sidebar-hint">Safe space for teens 💛</p>
+
+          {/* Daily Quote Sticker */}
+          <div className="quote-sticker">
+            <span className="quote-pin">📌</span>
+            <p className="quote-text">{dailyQuote}</p>
+          </div>
         </div>
       </aside>
 
@@ -736,6 +828,16 @@ function App() {
 
       {/* Main Content */}
       <main className="main-content">
+        <div className="mobile-utils-bar mobile-only">
+          <button className="help-pill-btn" onClick={() => setShowHelpModal(true)}>
+            <span style={{ fontSize: '1.1rem' }}>❓</span>
+            <span>คู่มือ</span>
+          </button>
+          <button className="settings-gear" onClick={() => setSettingsOpen(true)} title="Settings">
+            ⚙️
+          </button>
+        </div>
+
         {view === 'dashboard' ? (
           <div className="dashboard-view container">
             <header className="view-header">
@@ -763,7 +865,7 @@ function App() {
             {/* AI Questions - Interactive Q&A */}
             {aiQuestions.length > 0 && (
               <div className="ai-questions glass-panel">
-                <h3>🤖 AI อยากรู้จักคุณมากขึ้น</h3>
+                <h3>🤖 มุมสำรวจใจ</h3>
                 <p className="ai-questions-subtitle">ตอบคำถามเหล่านี้เพื่อให้ AI เข้าใจคุณดีขึ้น</p>
                 <div className="questions-list">
                   {aiQuestions.map((q) => (
@@ -829,13 +931,6 @@ function App() {
               ))}
             </div>
 
-            <button className="fab-button" onClick={() => handleAuthAction(() => {
-              setWriteMode('private');
-              setWriteIsPublic(false);
-              setView('write');
-            })}>
-              <IconPlus />
-            </button>
           </div>
         ) : view === 'summary' ? (
           <div className="summary-view container">
@@ -1141,6 +1236,23 @@ function App() {
                 </div>
                 <h2 className={`read-title ${privacyBlur ? 'blur-text' : ''}`}>{readEntry.title}</h2>
                 <div className={`read-content ${privacyBlur ? 'blur-text' : ''}`}>{readEntry.content}</div>
+
+                {/* History Section Moved Here */}
+                {readEntry.reflections && readEntry.reflections.length > 0 && (
+                  <div className="reflection-history" style={{ marginTop: '20px', borderTop: '1px solid rgba(0,0,0,0.1)', paddingTop: '16px' }}>
+                    <h4>ประวัติการไตร่ตรอง</h4>
+                    {readEntry.reflections.map((h: any, i: number) => (
+                      <div key={i} className="history-item">
+                        <span className="history-date">{new Date(h.createdAt).toLocaleDateString()}</span>
+                        <p className="history-content">"{h.content}"</p>
+                        <span className={`history-status status-${h.status}`}>
+                          {h.status === 'over_it' ? '✅ จบแล้ว' : h.status === 'still_dealing' ? '⏳ ยังสู้' : '🆘 ไม่ไหว'}
+                        </span>
+                        {h.aiResponse && <div className="history-ai">🤖 {h.aiResponse}</div>}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* RIGHT: Reflection */}
@@ -1155,48 +1267,62 @@ function App() {
                   <p>• มันไม่ได้แย่อย่างที่คิดใช่ไหม?</p>
                 </div>
 
-                <textarea
-                  className={`reflection-input ${privacyBlur ? 'blur-text' : ''}`}
-                  placeholder="เขียนสิ่งที่อยากบอกตัวเองในอดีต..."
-                  value={reflectionText}
-                  onChange={(e) => setReflectionText(e.target.value)}
-                ></textarea>
 
-                <div className="response-section">
-                  <p className="response-label">เลือกสถานะของคุณ:</p>
-                  <div className="response-options">
-                    <label className={`response-option ${selectedStatus === 'over_it' ? 'selected' : ''}`}>
-                      <input type="radio" name="status" value="over_it" checked={selectedStatus === 'over_it'} onChange={() => setSelectedStatus('over_it')} />
-                      <span className="response-icon">✅</span>
-                      <div>
-                        <span className="response-title">เรื่องจิ๊บจ๊อย</span>
-                        <span className="response-desc">Over it! ไม่ได้รู้สึกแย่แล้ว</span>
-                      </div>
-                    </label>
 
-                    <label className={`response-option ${selectedStatus === 'still_dealing' ? 'selected' : ''}`}>
-                      <input type="radio" name="status" value="still_dealing" checked={selectedStatus === 'still_dealing'} onChange={() => setSelectedStatus('still_dealing')} />
-                      <span className="response-icon">⏳</span>
-                      <div>
-                        <span className="response-title">ยังสู้อยู่</span>
-                        <span className="response-desc">Still dealing แต่โอเคขึ้นแล้ว (กลับมาใน 12 ชม.)</span>
-                      </div>
-                    </label>
-
-                    <label className={`response-option ${selectedStatus === 'need_help' ? 'selected' : ''}`}>
-                      <input type="radio" name="status" value="need_help" checked={selectedStatus === 'need_help'} onChange={() => setSelectedStatus('need_help')} />
-                      <span className="response-icon">🆘</span>
-                      <div>
-                        <span className="response-title">ไม่ไหวช่วยด้วย</span>
-                        <span className="response-desc">Need help ยังเครียดมาก (กลับมาใน 6 ชม.)</span>
-                      </div>
-                    </label>
+                {readEntry.isFinished ? (
+                  <div className="finished-state">
+                    <div className="finished-badge">🎉 เรื่องนี้จบลงด้วยดีแล้ว</div>
+                    <div className="final-summary glass-panel">
+                      <h3>🏆 บทสรุปการเติบโตของคุณ</h3>
+                      <p>{readEntry.aiResponse}</p>
+                    </div>
                   </div>
+                ) : (
+                  <>
+                    <textarea
+                      className={`reflection-input ${privacyBlur ? 'blur-text' : ''}`}
+                      placeholder="เขียนสิ่งที่อยากบอกตัวเองในอดีต..."
+                      value={reflectionText}
+                      onChange={(e) => setReflectionText(e.target.value)}
+                    ></textarea>
 
-                  <button className="btn-primary submit-btn" onClick={handleSubmitReflection} disabled={!selectedStatus || isSubmitting}>
-                    {isSubmitting ? 'กำลังประมวลผล...' : 'ส่งคำตอบ'}
-                  </button>
-                </div>
+                    <div className="response-section">
+                      <p className="response-label">เลือกสถานะของคุณ:</p>
+                      <div className="response-options">
+                        <label className={`response-option ${selectedStatus === 'over_it' ? 'selected' : ''}`}>
+                          <input type="radio" name="status" value="over_it" checked={selectedStatus === 'over_it'} onChange={() => setSelectedStatus('over_it')} />
+                          <span className="response-icon">✅</span>
+                          <div>
+                            <span className="response-title">เรื่องจิ๊บจ๊อย</span>
+                            <span className="response-desc">Over it! ไม่ได้รู้สึกแย่แล้ว</span>
+                          </div>
+                        </label>
+
+                        <label className={`response-option ${selectedStatus === 'still_dealing' ? 'selected' : ''}`}>
+                          <input type="radio" name="status" value="still_dealing" checked={selectedStatus === 'still_dealing'} onChange={() => setSelectedStatus('still_dealing')} />
+                          <span className="response-icon">⏳</span>
+                          <div>
+                            <span className="response-title">ยังสู้อยู่</span>
+                            <span className="response-desc">Still dealing แต่โอเคขึ้นแล้ว (กลับมาใน 12 ชม.)</span>
+                          </div>
+                        </label>
+
+                        <label className={`response-option ${selectedStatus === 'need_help' ? 'selected' : ''}`}>
+                          <input type="radio" name="status" value="need_help" checked={selectedStatus === 'need_help'} onChange={() => setSelectedStatus('need_help')} />
+                          <span className="response-icon">🆘</span>
+                          <div>
+                            <span className="response-title">ไม่ไหวช่วยด้วย</span>
+                            <span className="response-desc">Need help ยังเครียดมาก (กลับมาใน 6 ชม.)</span>
+                          </div>
+                        </label>
+                      </div>
+
+                      <button className="btn-primary submit-btn" onClick={handleSubmitReflection} disabled={!selectedStatus || isSubmitting}>
+                        {isSubmitting ? 'กำลังประมวลผล...' : 'ส่งคำตอบ'}
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -1290,136 +1416,145 @@ function App() {
               <IconPlus />
             </button>
           </div>
-        ) : null}
+        ) : null
+        }
 
         {/* ===== Settings Modal ===== */}
-        {settingsOpen && (
-          <div className="modal-overlay" onClick={() => setSettingsOpen(false)}>
-            <div className="modal-content glass-panel settings-modal" onClick={(e) => e.stopPropagation()}>
-              <div className="modal-icon">⚙️</div>
-              <h3>Settings</h3>
+        {
+          settingsOpen && (
+            <div className="modal-overlay" onClick={() => setSettingsOpen(false)}>
+              <div className="modal-content glass-panel settings-modal" onClick={(e) => e.stopPropagation()}>
+                <div className="modal-icon">⚙️</div>
+                <h3>Settings</h3>
 
-              <div className="settings-section">
-                <div className="settings-title">Theme</div>
-                <div className="theme-grid">
-                  {THEMES.map((t) => (
-                    <button
-                      key={t.name}
-                      className="theme-card"
-                      onClick={() => applyTheme(t)}
-                      style={{
-                        background: `linear-gradient(135deg, ${t.bg1}, ${t.bg2})`,
-                        borderColor: t.accent,
-                      }}
-                    >
-                      <div className="theme-name">{t.name}</div>
-                      <div className="theme-accent" style={{ background: t.accent }}></div>
-                    </button>
-                  ))}
+                <div className="settings-section">
+                  <div className="settings-title">Theme</div>
+                  <div className="theme-grid">
+                    {THEMES.map((t) => (
+                      <button
+                        key={t.name}
+                        className="theme-card"
+                        onClick={() => applyTheme(t)}
+                        style={{
+                          background: `linear-gradient(135deg, ${t.bg1}, ${t.bg2})`,
+                          borderColor: t.accent,
+                        }}
+                      >
+                        <div className="theme-name">{t.name}</div>
+                        <div className="theme-accent" style={{ background: t.accent }}></div>
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
 
-              <div className="settings-section">
-                <div className="settings-title">Privacy</div>
-                <div className="settings-row">
-                  <span>Blur titles & previews</span>
-                  <label className="switch">
-                    <input type="checkbox" checked={privacyBlur} onChange={(e) => setPrivacyBlur(e.target.checked)} />
-                    <span className="slider"></span>
-                  </label>
+                <div className="settings-section">
+                  <div className="settings-title">Privacy</div>
+                  <div className="settings-row">
+                    <span>Blur titles & previews</span>
+                    <label className="switch">
+                      <input type="checkbox" checked={privacyBlur} onChange={(e) => setPrivacyBlur(e.target.checked)} />
+                      <span className="slider"></span>
+                    </label>
+                  </div>
+                  <div className="settings-note">เหมาะเวลาคุณอยู่ที่สาธารณะ (เพื่อน/คนอื่นมองจอ)</div>
                 </div>
-                <div className="settings-note">เหมาะเวลาคุณอยู่ที่สาธารณะ (เพื่อน/คนอื่นมองจอ)</div>
-              </div>
 
-              <button className="btn-primary" onClick={() => setSettingsOpen(false)}>
-                Done
-              </button>
+                <button className="btn-primary" onClick={() => setSettingsOpen(false)}>
+                  Done
+                </button>
+              </div>
             </div>
-          </div>
-        )}
+          )
+        }
 
         {/* ===== AI Result Modal ===== */}
-        {showResultModal && (
-          <div className="modal-overlay" onClick={closeResultAndGoBack}>
-            <div className="modal-content glass-panel ai-result-modal" onClick={(e) => e.stopPropagation()}>
-              <div className="modal-icon">🤖</div>
-              <h3>จากใจ AI</h3>
-              <div className={`ai-response-text ${privacyBlur ? 'blur-text' : ''}`}>{aiResponse}</div>
+        {
+          showResultModal && (
+            <div className="modal-overlay" onClick={closeResultAndGoBack}>
+              <div className="modal-content glass-panel ai-result-modal" onClick={(e) => e.stopPropagation()}>
+                <div className="modal-icon">🤖</div>
+                <h3>🤖 มุมมองสะท้อนใจ</h3>
+                <div className={`ai-response-text ${privacyBlur ? 'blur-text' : ''}`}>{aiResponse}</div>
 
-              {selectedStatus === 'need_help' && (
-                <div className="help-resources">
-                  <div className="help-item">
-                    <span>📞</span>
-                    <div>
-                      <strong>สายด่วนสุขภาพจิต</strong>
-                      <p>1323 (24 ชั่วโมง)</p>
+                {selectedStatus === 'need_help' && (
+                  <div className="help-resources">
+                    <div className="help-item">
+                      <span>📞</span>
+                      <div>
+                        <strong>สายด่วนสุขภาพจิต</strong>
+                        <p>1323 (24 ชั่วโมง)</p>
+                      </div>
+                    </div>
+                    <div className="help-item">
+                      <span>💬</span>
+                      <div>
+                        <strong>สายด่วนป้องกันการฆ่าตัวตาย</strong>
+                        <p>1388</p>
+                      </div>
                     </div>
                   </div>
-                  <div className="help-item">
-                    <span>💬</span>
-                    <div>
-                      <strong>สายด่วนป้องกันการฆ่าตัวตาย</strong>
-                      <p>1388</p>
-                    </div>
-                  </div>
-                </div>
-              )}
+                )}
 
-              {(selectedStatus === 'still_dealing' || selectedStatus === 'need_help') && (
-                <p className="timer-note">⏰ เราจะกลับมาเช็คอีกครั้งใน {selectedStatus === 'need_help' ? '6' : '12'} ชั่วโมง</p>
-              )}
+                {(selectedStatus === 'still_dealing' || selectedStatus === 'need_help') && (
+                  <p className="timer-note">⏰ เราจะส่งแจ้งเตือนอีกครั้งให้กลับมาเช็คข้อความใน {selectedStatus === 'need_help' ? '6' : '12'} ชั่วโมง</p>
+                )}
 
-              <button className="btn-primary" onClick={closeResultAndGoBack}>
-                ขอบคุณนะ 💛
-              </button>
+                <button className="btn-primary" onClick={closeResultAndGoBack}>
+                  ขอบคุณนะ 💛
+                </button>
+              </div>
             </div>
-          </div>
-        )}
+          )
+        }
 
         {/* ===== Locked Modal ===== */}
-        {lockedModalOpen && selectedEntry && (
-          <div className="modal-overlay" onClick={() => setLockedModalOpen(false)}>
-            <div className="modal-content glass-panel" onClick={e => e.stopPropagation()}>
-              <div className="modal-icon"><IconLock size={48} /></div>
-              <h3>ยังเปิดไม่ได้...</h3>
-              <p>ยังไม่ถึงเวลาที่จะอ่านบันทึกนี้</p>
-              <p style={{ marginTop: '0.5rem', color: 'hsl(45, 90%, 65%)' }}>ลองหายใจเข้าลึกๆ ก่อนไหม?</p>
-              <div className="modal-buttons">
-                <button className="btn-secondary" onClick={() => setLockedModalOpen(false)}>รอต่อไป</button>
-                <button className="btn-primary" onClick={() => {
-                  handleUnlock(selectedEntry.id);
-                  setLockedModalOpen(false);
-                }}>พร้อมแล้ว</button>
+        {
+          lockedModalOpen && selectedEntry && (
+            <div className="modal-overlay" onClick={() => setLockedModalOpen(false)}>
+              <div className="modal-content glass-panel" onClick={e => e.stopPropagation()}>
+                <div className="modal-icon"><IconLock size={48} /></div>
+                <h3>ยังเปิดไม่ได้...</h3>
+                <p>ยังไม่ถึงเวลาที่จะอ่านบันทึกนี้</p>
+                <p style={{ marginTop: '0.5rem', color: 'hsl(45, 90%, 65%)' }}>ลองหายใจเข้าลึกๆ ก่อนไหม?</p>
+                <div className="modal-buttons">
+                  <button className="btn-secondary" onClick={() => setLockedModalOpen(false)}>รอต่อไป</button>
+                  <button className="btn-primary" onClick={() => {
+                    handleUnlock(selectedEntry.id);
+                    setLockedModalOpen(false);
+                  }}>พร้อมแล้ว</button>
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          )
+        }
 
         {/* ===== Delete Confirmation Modal ===== */}
-        {showDeleteModal && entryToDelete && (
-          <div className="modal-overlay" onClick={() => setShowDeleteModal(false)}>
-            <div className="modal-content glass-panel" onClick={(e) => e.stopPropagation()}>
-              <div className="modal-icon">🗑️</div>
-              <h3>ลบรายการนี้?</h3>
-              <p>
-                คุณแน่ใจหรือไม่ที่จะลบ "<span className={privacyBlur ? 'blur-text' : ''}>{entryToDelete.title}</span>"?
-              </p>
-              <p style={{ marginTop: '0.5rem', color: 'hsl(0, 70%, 60%)' }}>การกระทำนี้ไม่สามารถเรียกคืนได้</p>
-              <div className="modal-buttons">
-                <button className="btn-secondary" onClick={() => setShowDeleteModal(false)}>
-                  ยกเลิก
-                </button>
-                <button className="btn-danger" onClick={handleDelete}>
-                  ลบเลย
-                </button>
+        {
+          showDeleteModal && entryToDelete && (
+            <div className="modal-overlay" onClick={() => setShowDeleteModal(false)}>
+              <div className="modal-content glass-panel" onClick={(e) => e.stopPropagation()}>
+                <div className="modal-icon">🗑️</div>
+                <h3>ลบรายการนี้?</h3>
+                <p>
+                  คุณแน่ใจหรือไม่ที่จะลบ "<span className={privacyBlur ? 'blur-text' : ''}>{entryToDelete.title}</span>"?
+                </p>
+                <p style={{ marginTop: '0.5rem', color: 'hsl(0, 70%, 60%)' }}>การกระทำนี้ไม่สามารถเรียกคืนได้</p>
+                <div className="modal-buttons">
+                  <button className="btn-secondary" onClick={() => setShowDeleteModal(false)}>
+                    ยกเลิก
+                  </button>
+                  <button className="btn-danger" onClick={handleDelete}>
+                    ลบเลย
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
-        )}
-      </main>
+          )
+        }
+      </main >
 
       {/* Logout Modal Component */}
-      <LogoutModal
+      < LogoutModal
         isOpen={showLogoutModal}
         onClose={() => setShowLogoutModal(false)}
         onConfirm={() => {
@@ -1434,37 +1569,93 @@ function App() {
       />
 
       {/* ===== Auth Modals ===== */}
-      {authModal === 'login' && (
-        <div className="modal-overlay" onClick={() => setAuthModal('none')}>
-          {/* Prevent click inside modal from closing it */}
-          <div className="modal-content glass-panel" onClick={(e) => e.stopPropagation()}>
-            <Login
-              onLoginSuccess={(username) => {
-                console.log("Logged in as", username);
-                setIsAuthenticated(true);
-                setAuthModal('none');
-                fetchEntries();
-                // We're already on dashboard or the protected route logic will handle next steps if needed
-                // But generally staying on dashboard is fine or we could pass a redirect callback later
-              }}
-              onNavigateToRegister={() => setAuthModal('register')}
-            />
+      {
+        authModal === 'login' && (
+          <div className="modal-overlay" onClick={() => setAuthModal('none')}>
+            {/* Prevent click inside modal from closing it */}
+            <div className="modal-content glass-panel" onClick={(e) => e.stopPropagation()}>
+              <Login
+                onLoginSuccess={(username) => {
+                  console.log("Logged in as", username);
+                  setIsAuthenticated(true);
+                  setAuthModal('none');
+                  fetchEntries();
+                  fetchUserProfile();
+                  // We're already on dashboard or the protected route logic will handle next steps if needed
+                  // But generally staying on dashboard is fine or we could pass a redirect callback later
+                }}
+                onNavigateToRegister={() => setAuthModal('register')}
+              />
+            </div>
           </div>
-        </div>
-      )}
+        )
+      }
 
-      {authModal === 'register' && (
-        <div className="modal-overlay" onClick={() => setAuthModal('none')}>
-          <div className="modal-content glass-panel" onClick={(e) => e.stopPropagation()}>
-            <Register
-              onRegisterSuccess={() => setAuthModal('login')}
-              onNavigateToLogin={() => setAuthModal('login')}
-            />
+      {
+        authModal === 'register' && (
+          <div className="modal-overlay" onClick={() => setAuthModal('none')}>
+            <div className="modal-content glass-panel" onClick={(e) => e.stopPropagation()}>
+              <Register
+                onRegisterSuccess={() => setAuthModal('login')}
+                onNavigateToLogin={() => setAuthModal('login')}
+              />
+            </div>
           </div>
-        </div>
-      )}
+        )
+      }
 
-    </div>
+      {/* ===== Global FAB (Conditional) ===== */}
+      {
+        view !== 'write' && view !== 'public' && (
+          <button className="fab-button mobile-global-fab" onClick={() => handleAuthAction(() => {
+            setWriteMode('private');
+            setWriteIsPublic(false);
+            setView('write');
+          })}>
+            <IconPlus />
+          </button>
+        )
+      }
+
+      {/* ===== Help Modal ===== */}
+      {
+        showHelpModal && (
+          <div className="modal-overlay" onClick={() => setShowHelpModal(false)}>
+            <div className="modal-content glass-panel" style={{ maxWidth: '500px', textAlign: 'left' }} onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <h2>คู่มือการใช้งาน 📖</h2>
+                <button className="close-btn" onClick={() => setShowHelpModal(false)}>×</button>
+              </div>
+
+              <div className="help-content" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                <section>
+                  <h3 style={{ fontSize: '1.2rem', color: 'var(--accent)', marginBottom: '8px' }}>1. วิธีการใช้งาน</h3>
+                  <ul style={{ paddingLeft: '20px', lineHeight: '1.6', color: 'hsl(220, 15%, 35%)' }}>
+                    <li><strong>เขียนบันทึก:</strong> กดปุ่ม + เพื่อระบายความรู้สึก ตั้งชื่อเรื่องและใส่อารมณ์ของคุณ</li>
+                    <li><strong>ล็อคอัตโนมัติ:</strong> เมื่อบันทึกเสร็จ ระบบจะล็อคบันทึกนั้นไว้ชั่วคราว (ตามความรุนแรงของอารมณ์)</li>
+                    <li><strong>รอเวลา:</strong> เมื่อครบกำหนดเวลา ระบบจะแจ้งเตือนให้กลับมาอ่าน</li>
+                    <li><strong>ไตร่ตรอง:</strong> กลับมาอ่านสิ่งที่เขียนด้วยใจที่สงบลง และตอบคำถามเพื่อให้กำลังใจตัวเองในอดีต</li>
+                  </ul>
+                </section>
+
+                <section>
+                  <h3 style={{ fontSize: '1.2rem', color: 'var(--accent)', marginBottom: '8px' }}>2. ทําไมต้องรอเวลา? ⏳</h3>
+                  <p style={{ lineHeight: '1.6', color: 'hsl(220, 15%, 35%)' }}>
+                    "อารมณ์ที่รุนแรงอาจทำให้เรามองไม่เห็นความจริง" <br />
+                    การรอเวลา (Cool Down) ช่วยให้สมองส่วนอารมณ์สงบลง ทำให้เรากลับมามองปัญหาเดิมด้วยมุมมองใหม่ที่มีสติและปัญญามากขึ้น เหมือนน้ำขุ่นที่ตกลงจนใสสะอาด
+                  </p>
+                </section>
+              </div>
+
+              <button className="btn-primary" style={{ width: '100%', marginTop: '24px' }} onClick={() => setShowHelpModal(false)}>
+                เข้าใจแล้ว 👍
+              </button>
+            </div>
+          </div>
+        )
+      }
+
+    </div >
   )
 }
 
